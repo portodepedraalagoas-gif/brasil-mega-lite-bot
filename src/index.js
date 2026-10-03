@@ -20,7 +20,7 @@ async function registerCommands() {
   console.log('✅ Comandos slash registrados.');
 }
 async function updatePresence() {
-  client.user.setActivity('Brasil Mega Lite', {
+  client.user.setActivity('Brasil Mega Lite 🦊', {
     type: ActivityType.Playing
   });
 }
