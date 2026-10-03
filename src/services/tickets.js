@@ -12,8 +12,10 @@ import {
 } from 'discord.js';
 
 import { config } from '../config.js';
+import { getNextPunishmentId } from '../commands/punir.js';
 
 const TICKET_LOG_CHANNEL_ID = '1555924703695339581';
+const PUNISHMENT_LOG_CHANNEL_ID = '1555949299597049936';
 
 const TYPE = {
   suporte: {
@@ -1265,23 +1267,23 @@ async function decide(
   }
 
 
- const sendData = {
+const sentResult = await target.send({
   embeds: [result]
-};
+});
 
 if (accepted) {
   const punishmentRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`report_punish:${ownerId}`)
+      .setCustomId(`report_punish:${sentResult.id}`)
       .setLabel('Registrar punição')
       .setEmoji('🔨')
       .setStyle(ButtonStyle.Danger)
   );
 
-  sendData.components = [punishmentRow];
+  await sentResult.edit({
+    components: [punishmentRow]
+  });
 }
-
-await target.send(sendData);
 
 
   await interaction.channel.setTopic(
@@ -1313,7 +1315,20 @@ export async function handleTicketInteraction(
 ) {
 
   if (interaction.isButton()) {
+    // REGISTRAR PUNIÇÃO DE UMA DENÚNCIA ACEITA
+    if (interaction.customId.startsWith('report_punish:')) {
+      const reportMessageId = interaction.customId.split(':')[1];
 
+      await interaction.reply({
+        content:
+          `🔨 Registro de punição solicitado.\n` +
+          `Denúncia vinculada: \`${reportMessageId}\`\n\n` +
+          `Use o comando **/punir** para registrar a punição no histórico.`,
+        ephemeral: true
+      });
+
+      return true;
+    }
     // ABRIR
 
     if (
