@@ -20,8 +20,10 @@ async function registerCommands() {
   console.log('✅ Comandos slash registrados.');
 }
 async function updatePresence() {
-  try { const s = await queryMta(); client.user.setActivity(`${config.serverName} | ${s.players}/${s.max_players} jogadores`, { type: ActivityType.Playing }); }
-  catch { client.user.setActivity(`${config.serverName} | servidor MTA`, { type: ActivityType.Playing }); }
+  client.user.setActivity('Brasil Mega Lite', {
+    type: ActivityType.Playing
+  });
+}
 }
 client.once('ready', async () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
