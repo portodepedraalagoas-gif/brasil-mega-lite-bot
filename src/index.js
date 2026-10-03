@@ -24,7 +24,6 @@ async function updatePresence() {
     type: ActivityType.Playing
   });
 }
-}
 client.once('ready', async () => {
   console.log(`✅ Bot conectado como ${client.user.tag}`);
   await updatePresence();
