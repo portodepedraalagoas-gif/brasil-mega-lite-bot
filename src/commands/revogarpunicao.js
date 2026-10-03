@@ -28,7 +28,10 @@ export const data = new SlashCommandBuilder()
 
 export async function execute(interaction) {
 
-  // SOMENTE O CARGO DE DENÚNCIAS
+  // ==========================================
+  // SOMENTE EQUIPE DE DENÚNCIAS
+  // ==========================================
+
   const authorized =
     interaction.member?.roles?.cache?.has(
       REPORT_ROLE_ID
@@ -48,23 +51,57 @@ export async function execute(interaction) {
 
   try {
 
-    const punishmentId =
-      interaction.options
-        .getString('punicao', true)
-        .trim()
-        .toUpperCase();
+    // ==========================================
+    // PEGAR DADOS DO COMANDO
+    // ==========================================
+
+    const punishmentInput =
+      interaction.options.getString(
+        'punicao',
+        true
+      );
 
     const motivo =
       interaction.options
         .getString('motivo', true)
         .trim();
 
-    // VALIDA O FORMATO PUN-XXXX
-    if (!/^PUN-\d+$/.test(punishmentId)) {
+    // ==========================================
+    // NORMALIZAR ID
+    // ==========================================
+
+    const punishmentId =
+      punishmentInput
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, '');
+
+    // Aceita:
+    // PUN-0014
+    // pun-0014
+    // PUN0014
+    // pun0014
+
+    const idMatch =
+      punishmentId.match(
+        /^PUN-?(\d+)$/
+      );
+
+    if (!idMatch) {
       return interaction.editReply(
-        '❌ ID inválido. Use um ID como `PUN-0014`.'
+        `❌ ID inválido.\n\n` +
+        `ID recebido pelo bot: \`${punishmentInput}\`\n\n` +
+        `Use um ID como: \`PUN-0014\``
       );
     }
+
+    // TRANSFORMA SEMPRE NO PADRÃO PUN-XXXX
+    const normalizedPunishmentId =
+      `PUN-${idMatch[1].padStart(4, '0')}`;
+
+    // ==========================================
+    // BUSCAR CANAL DE PUNIÇÕES
+    // ==========================================
 
     const logChannel =
       await interaction.guild.channels.fetch(
@@ -77,7 +114,10 @@ export async function execute(interaction) {
       );
     }
 
-    // BUSCAR PUNIÇÃO NAS ÚLTIMAS 100 MENSAGENS
+    // ==========================================
+    // BUSCAR PUNIÇÃO
+    // ==========================================
+
     const messages =
       await logChannel.messages.fetch({
         limit: 100
@@ -88,61 +128,93 @@ export async function execute(interaction) {
 
     for (const message of messages.values()) {
 
-      const embed =
-        message.embeds?.find(embed =>
-          embed.title?.includes(punishmentId)
-        );
+      for (const embed of message.embeds) {
 
-      if (embed) {
-        punishmentMessage = message;
-        punishmentEmbed = embed;
+        if (
+          embed.title?.includes(
+            normalizedPunishmentId
+          )
+        ) {
+          punishmentMessage = message;
+          punishmentEmbed = embed;
+          break;
+        }
+      }
+
+      if (punishmentMessage) {
         break;
       }
     }
+
+    // ==========================================
+    // PUNIÇÃO NÃO ENCONTRADA
+    // ==========================================
 
     if (
       !punishmentMessage ||
       !punishmentEmbed
     ) {
       return interaction.editReply(
-        `❌ Não encontrei a punição **${punishmentId}** nas últimas 100 mensagens do histórico.`
+        `❌ Não encontrei a punição **${normalizedPunishmentId}** nas últimas 100 mensagens do histórico.`
       );
     }
 
-    // IMPEDE REVOGAÇÃO DUPLA
+    // ==========================================
+    // VERIFICAR SE JÁ FOI REVOGADA
+    // ==========================================
+
     const alreadyRevoked =
       punishmentEmbed.fields?.some(
         field =>
-          field.name.includes('Status') &&
-          field.value.includes('REVOGADA')
+          field.name
+            ?.toLowerCase()
+            .includes('status') &&
+          field.value
+            ?.toUpperCase()
+            .includes('REVOGADA')
       );
 
-    if (alreadyRevoked) {
+    if (
+      alreadyRevoked ||
+      punishmentEmbed.title
+        ?.toUpperCase()
+        .includes('PUNIÇÃO REVOGADA')
+    ) {
       return interaction.editReply(
-        `❌ A punição **${punishmentId}** já foi revogada.`
+        `❌ A punição **${normalizedPunishmentId}** já foi revogada.`
       );
     }
 
-    // COPIA OS CAMPOS ORIGINAIS
-    const fields =
-      punishmentEmbed.fields.map(field => ({
-        name: field.name,
-        value: field.value,
-        inline: field.inline
-      }));
+    // ==========================================
+    // COPIAR CAMPOS DA PUNIÇÃO ORIGINAL
+    // ==========================================
 
-    // ADICIONA STATUS DA REVOGAÇÃO
+    const fields =
+      punishmentEmbed.fields.map(
+        field => ({
+          name: field.name,
+          value: field.value,
+          inline: field.inline
+        })
+      );
+
+    // ==========================================
+    // ADICIONAR INFORMAÇÕES DA REVOGAÇÃO
+    // ==========================================
+
     fields.push(
       {
         name: '📌 Status',
         value: '↩️ REVOGADA',
         inline: true
       },
+
       {
         name: '🛡️ Revogada por',
         value: `${interaction.user}`,
         inline: true
       },
+
       {
         name: '📝 Motivo da revogação',
         value: motivo,
@@ -150,26 +222,43 @@ export async function execute(interaction) {
       }
     );
 
+    // ==========================================
+    // CRIAR NOVO EMBED
+    // ==========================================
+
     const revokedEmbed =
       new EmbedBuilder()
+
         .setColor(0x95a5a6)
+
         .setTitle(
-          `↩️ PUNIÇÃO REVOGADA — ${punishmentId}`
+          `↩️ PUNIÇÃO REVOGADA — ${normalizedPunishmentId}`
         )
+
         .addFields(fields)
+
         .setFooter({
           text:
             'Brasil Mega Lite • Sistema de Punições'
         })
+
         .setTimestamp();
 
-    // EDITA A PUNIÇÃO ORIGINAL
+    // ==========================================
+    // EDITAR PUNIÇÃO ORIGINAL
+    // ==========================================
+
     await punishmentMessage.edit({
       embeds: [revokedEmbed]
     });
 
+    // ==========================================
+    // CONFIRMAÇÃO
+    // ==========================================
+
     await interaction.editReply(
-      `✅ A punição **${punishmentId}** foi revogada com sucesso.`
+      `✅ A punição **${normalizedPunishmentId}** foi revogada com sucesso.\n\n` +
+      `📝 **Motivo:** ${motivo}`
     );
 
   } catch (error) {
@@ -179,8 +268,13 @@ export async function execute(interaction) {
       error
     );
 
-    await interaction.editReply(
-      '❌ Ocorreu um erro ao revogar a punição.'
-    );
+    if (
+      interaction.deferred ||
+      interaction.replied
+    ) {
+      await interaction.editReply(
+        '❌ Ocorreu um erro ao revogar a punição.'
+      ).catch(() => {});
+    }
   }
 }
