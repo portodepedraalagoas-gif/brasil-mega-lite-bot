@@ -3,7 +3,7 @@ import {
   AttachmentBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ChannelType,
+ ChannelType,
   EmbedBuilder,
   ModalBuilder,
   PermissionFlagsBits,
@@ -1315,17 +1315,63 @@ export async function handleTicketInteraction(
 ) {
 
   if (interaction.isButton()) {
-    // REGISTRAR PUNIÇÃO DE UMA DENÚNCIA ACEITA
+        // REGISTRAR PUNIÇÃO DE UMA DENÚNCIA ACEITA
     if (interaction.customId.startsWith('report_punish:')) {
       const reportMessageId = interaction.customId.split(':')[1];
 
-      await interaction.reply({
-        content:
-          `🔨 Registro de punição solicitado.\n` +
-          `Denúncia vinculada: \`${reportMessageId}\`\n\n` +
-          `Use o comando **/punir** para registrar a punição no histórico.`,
-        ephemeral: true
-      });
+      const modal = new ModalBuilder()
+        .setCustomId(`report_punish_modal:${reportMessageId}`)
+        .setTitle('Registrar punição');
+
+      const jogadorInput = new TextInputBuilder()
+        .setCustomId('jogador')
+        .setLabel('Nome do jogador')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Ex: Lucas_Maciel')
+        .setRequired(true)
+        .setMaxLength(100);
+
+      const identificadorInput = new TextInputBuilder()
+        .setCustomId('identificador')
+        .setLabel('ID / Conta / Serial')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Opcional')
+        .setRequired(false)
+        .setMaxLength(100);
+
+      const punicaoInput = new TextInputBuilder()
+        .setCustomId('punicao')
+        .setLabel('Punição')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('advertencia, kick, ban_temporario ou ban_permanente')
+        .setRequired(true)
+        .setMaxLength(50);
+
+      const duracaoInput = new TextInputBuilder()
+        .setCustomId('duracao')
+        .setLabel('Duração')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Ex: 7 dias. Deixe vazio se não se aplicar')
+        .setRequired(false)
+        .setMaxLength(100);
+
+      const motivoInput = new TextInputBuilder()
+        .setCustomId('motivo')
+        .setLabel('Motivo da punição')
+        .setStyle(TextInputStyle.Paragraph)
+        .setPlaceholder('Informe o motivo da punição')
+        .setRequired(true)
+        .setMaxLength(1000);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(jogadorInput),
+        new ActionRowBuilder().addComponents(identificadorInput),
+        new ActionRowBuilder().addComponents(punicaoInput),
+        new ActionRowBuilder().addComponents(duracaoInput),
+        new ActionRowBuilder().addComponents(motivoInput)
+      );
+
+      await interaction.showModal(modal);
 
       return true;
     }
