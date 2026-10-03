@@ -10,7 +10,8 @@ import * as ip from './commands/ip.js';
 import * as ajuda from './commands/ajuda.js';
 import * as verificacao from './commands/verificacao.js';
 import * as painel from './commands/painel.js';
-
+import * as punir from './commands/punir.js';
+import * as historico from './commands/historico.js';
 validateConfig();
 
 const commandModules = [
@@ -20,7 +21,9 @@ const commandModules = [
   ajuda,
   verificacao,
   painel,
-  tickets
+  tickets,
+  punir,
+  historico
 ];
 
 const client = new Client({
