@@ -199,6 +199,33 @@ export async function execute(interaction) {
       await getNextPunishmentId(
         logChannel
       );
+    // VERIFICAR REINCIDÊNCIA PELO IDENTIFICADOR
+let previousPunishments = [];
+
+if (identificador) {
+  const messages = await logChannel.messages.fetch({
+    limit: 100
+  });
+
+  for (const message of messages.values()) {
+    for (const oldEmbed of message.embeds) {
+      const idField = oldEmbed.fields?.find(
+        field => field.name === '🆔 Identificador'
+      );
+
+      if (
+        idField?.value?.trim().toLowerCase() ===
+        identificador.trim().toLowerCase()
+      ) {
+        previousPunishments.push(
+          oldEmbed.title || 'Punição anterior'
+        );
+      }
+    }
+  }
+}
+
+const reincidencia = previousPunishments.length;
 
     const embed =
       new EmbedBuilder()
@@ -261,7 +288,14 @@ export async function execute(interaction) {
               'Nenhuma',
             inline: true
           },
-
+{
+  name: '⚠️ Reincidência',
+  value:
+    reincidencia > 0
+      ? `🚨 REINCIDENTE — ${reincidencia} punição(ões) anterior(es)`
+      : '✅ Nenhuma punição anterior',
+  inline: false
+},
           {
             name: '📝 Motivo',
             value: motivo,
