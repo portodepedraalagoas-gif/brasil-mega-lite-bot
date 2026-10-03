@@ -1265,9 +1265,23 @@ async function decide(
   }
 
 
-  await target.send({
-    embeds: [result]
-  });
+ const sendData = {
+  embeds: [result]
+};
+
+if (accepted) {
+  const punishmentRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`report_punish:${ownerId}`)
+      .setLabel('Registrar punição')
+      .setEmoji('🔨')
+      .setStyle(ButtonStyle.Danger)
+  );
+
+  sendData.components = [punishmentRow];
+}
+
+await target.send(sendData);
 
 
   await interaction.channel.setTopic(
