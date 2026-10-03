@@ -1579,7 +1579,158 @@ export async function handleTicketInteraction(
   if (
     interaction.isModalSubmit()
   ) {
+    // REGISTRAR PUNIÇÃO PELO MODAL DA DENÚNCIA
+    if (
+      interaction.customId.startsWith(
+        'report_punish_modal:'
+      )
+    ) {
+      const reportMessageId =
+        interaction.customId.split(':')[1];
 
+      await interaction.deferReply({
+        ephemeral: true
+      });
+
+      try {
+        const jogador =
+          interaction.fields.getTextInputValue('jogador');
+
+        const identificador =
+          interaction.fields.getTextInputValue('identificador') || null;
+
+        const punicao =
+          interaction.fields.getTextInputValue('punicao')
+            .trim()
+            .toLowerCase();
+
+        const duracao =
+          interaction.fields.getTextInputValue('duracao') || null;
+
+        const motivo =
+          interaction.fields.getTextInputValue('motivo');
+
+        const punishmentNames = {
+          advertencia: '🟨 Advertência',
+          kick: '👢 Kick',
+          ban_temporario: '⏱️ Ban temporário',
+          ban_permanente: '🔨 Ban permanente'
+        };
+
+        if (!punishmentNames[punicao]) {
+          await interaction.editReply(
+            '❌ Punição inválida. Use: `advertencia`, `kick`, `ban_temporario` ou `ban_permanente`.'
+          );
+
+          return true;
+        }
+
+        if (
+          punicao === 'ban_temporario' &&
+          !duracao
+        ) {
+          await interaction.editReply(
+            '❌ Para `ban_temporario`, informe a duração.'
+          );
+
+          return true;
+        }
+
+        const logChannel =
+          await interaction.guild.channels.fetch(
+            PUNISHMENT_LOG_CHANNEL_ID
+          );
+
+        if (!logChannel?.isTextBased()) {
+          await interaction.editReply(
+            '❌ O canal de punições não foi encontrado.'
+          );
+
+          return true;
+        }
+
+        const punishmentId =
+          await getNextPunishmentId(logChannel);
+
+        const punishmentEmbed =
+          new EmbedBuilder()
+            .setColor(0xe74c3c)
+            .setTitle(
+              `🔨 PUNIÇÃO REGISTRADA — ${punishmentId}`
+            )
+            .addFields(
+              {
+                name: '👤 Jogador',
+                value: jogador,
+                inline: true
+              },
+              {
+                name: '🆔 Identificador',
+                value: identificador || 'Não informado',
+                inline: true
+              },
+              {
+                name: '⚖️ Punição',
+                value: punishmentNames[punicao],
+                inline: true
+              },
+              {
+                name: '⏱️ Duração',
+                value:
+                  punicao === 'ban_permanente'
+                    ? 'Permanente'
+                    : duracao || 'Não se aplica',
+                inline: true
+              },
+              {
+                name: '🛡️ Staff responsável',
+                value: `${interaction.user}`,
+                inline: true
+              },
+              {
+                name: '📡 Origem',
+                value: 'DENÚNCIA',
+                inline: true
+              },
+              {
+                name: '🚨 Denúncia relacionada',
+                value: reportMessageId,
+                inline: true
+              },
+              {
+                name: '📝 Motivo',
+                value: motivo,
+                inline: false
+              }
+            )
+            .setFooter({
+              text: 'Brasil Mega Lite • Sistema de Punições'
+            })
+            .setTimestamp();
+
+        await logChannel.send({
+          embeds: [punishmentEmbed]
+        });
+
+        await interaction.editReply(
+          `✅ Punição **${punishmentId}** registrada com sucesso.`
+        );
+
+        return true;
+
+      } catch (error) {
+        console.error(
+          'Erro ao registrar punição pela denúncia:',
+          error
+        );
+
+        await interaction.editReply(
+          '❌ Ocorreu um erro ao registrar a punição.'
+        );
+
+        return true;
+      }
+    }
     if (
       interaction.customId.startsWith(
         'ticket_modal:'
