@@ -1597,6 +1597,19 @@ if (!authorized) {
         'report_punish_modal:'
       )
     ) {
+      const REPORT_ROLE_ID = '1555910336820027472';
+
+const authorized =
+  interaction.member?.roles?.cache?.has(REPORT_ROLE_ID);
+
+if (!authorized) {
+  await interaction.reply({
+    content: '❌ Apenas a **Equipe de Denúncias** pode registrar punições.',
+    ephemeral: true
+  });
+
+  return true;
+}
       const reportMessageId =
         interaction.customId.split(':')[1];
 
