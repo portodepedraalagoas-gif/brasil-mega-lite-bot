@@ -199,30 +199,56 @@ export async function execute(interaction) {
       await getNextPunishmentId(
         logChannel
       );
-    // VERIFICAR REINCIDÊNCIA PELO JOGADOR
-let previousPunishments = [];
 
-const messages = await logChannel.messages.fetch({
-  limit: 100
-});
+    // ==========================================
+    // VERIFICAR REINCIDÊNCIA PELO NOME DO JOGADOR
+    // ==========================================
 
-for (const message of messages.values()) {
-  for (const oldEmbed of message.embeds) {
-    const jogadorField = oldEmbed.fields?.find(
-      field => field.name.includes('Jogador')
-    );
+    let previousPunishments = [];
 
-    if (
-      jogadorField?.value?.includes(`<@${jogador.id}>`)
-    ) {
-      previousPunishments.push(
-        oldEmbed.title || 'Punição anterior'
-      );
+    const messages =
+      await logChannel.messages.fetch({
+        limit: 100
+      });
+
+    const jogadorNormalizado =
+      jogador.trim().toLowerCase();
+
+    for (const message of messages.values()) {
+      for (const oldEmbed of message.embeds) {
+
+        const jogadorField =
+          oldEmbed.fields?.find(
+            field =>
+              field.name.includes('Jogador')
+          );
+
+        if (!jogadorField?.value) {
+          continue;
+        }
+
+        const jogadorAnterior =
+          jogadorField.value
+            .trim()
+            .toLowerCase();
+
+        if (
+          jogadorAnterior === jogadorNormalizado
+        ) {
+          previousPunishments.push(
+            oldEmbed.title ||
+            'Punição anterior'
+          );
+        }
+      }
     }
-  }
-}
 
-const reincidencia = previousPunishments.length;
+    const reincidencia =
+      previousPunishments.length;
+
+    // ==========================================
+    // CRIAR EMBED DA PUNIÇÃO
+    // ==========================================
 
     const embed =
       new EmbedBuilder()
@@ -262,13 +288,15 @@ const reincidencia = previousPunishments.length;
             value:
               punicao === 'ban_permanente'
                 ? 'Permanente'
-                : duracao || 'Não se aplica',
+                : duracao ||
+                  'Não se aplica',
             inline: true
           },
 
           {
             name: '🛡️ Staff responsável',
-            value: `${interaction.user}`,
+            value:
+              `${interaction.user}`,
             inline: true
           },
 
@@ -285,14 +313,16 @@ const reincidencia = previousPunishments.length;
               'Nenhuma',
             inline: true
           },
-{
-  name: '⚠️ Reincidência',
-  value:
-    reincidencia > 0
-      ? `🚨 REINCIDENTE — ${reincidencia} punição(ões) anterior(es)`
-      : '✅ Nenhuma punição anterior',
-  inline: false
-},
+
+          {
+            name: '⚠️ Reincidência',
+            value:
+              reincidencia > 0
+                ? `🚨 REINCIDENTE — ${reincidencia} punição(ões) anterior(es)`
+                : '✅ Nenhuma punição anterior',
+            inline: false
+          },
+
           {
             name: '📝 Motivo',
             value: motivo,
