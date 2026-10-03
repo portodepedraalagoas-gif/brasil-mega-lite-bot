@@ -52,7 +52,7 @@ export const data = new SlashCommandBuilder()
       .setMaxLength(1000)
   )
 
-  // OPCIONAIS DEPOIS
+  // OPCIONAIS
   .addStringOption(option =>
     option
       .setName('identificador')
@@ -104,11 +104,16 @@ export async function getNextPunishmentId(channel) {
 
   for (const message of messages.values()) {
     for (const embed of message.embeds) {
-      const match = embed.title?.match(/PUN-(\d+)/);
 
-      if (!match) continue;
+      const match =
+        embed.title?.match(/PUN-(\d+)/);
 
-      const number = Number(match[1]);
+      if (!match) {
+        continue;
+      }
+
+      const number =
+        Number(match[1]);
 
       if (number > highest) {
         highest = number;
@@ -121,6 +126,11 @@ export async function getNextPunishmentId(channel) {
 
 
 export async function execute(interaction) {
+
+  // ==========================================
+  // PERMISSÃO
+  // ==========================================
+
   const authorized =
     interaction.memberPermissions?.has(
       PermissionFlagsBits.Administrator
@@ -137,11 +147,18 @@ export async function execute(interaction) {
     });
   }
 
+
   await interaction.deferReply({
     ephemeral: true
   });
 
+
   try {
+
+    // ==========================================
+    // PEGAR DADOS DO COMANDO
+    // ==========================================
+
     const jogador =
       interaction.options.getString(
         'jogador',
@@ -175,6 +192,11 @@ export async function execute(interaction) {
         'denuncia'
       );
 
+
+    // ==========================================
+    // BAN TEMPORÁRIO PRECISA DE DURAÇÃO
+    // ==========================================
+
     if (
       punicao === 'ban_temporario' &&
       !duracao
@@ -184,10 +206,16 @@ export async function execute(interaction) {
       );
     }
 
+
+    // ==========================================
+    // PEGAR CANAL DE LOGS
+    // ==========================================
+
     const logChannel =
       await interaction.guild.channels.fetch(
         PUNISHMENT_LOG_CHANNEL_ID
       );
+
 
     if (!logChannel?.isTextBased()) {
       return interaction.editReply(
@@ -195,13 +223,19 @@ export async function execute(interaction) {
       );
     }
 
+
+    // ==========================================
+    // GERAR ID DA PUNIÇÃO
+    // ==========================================
+
     const punishmentId =
       await getNextPunishmentId(
         logChannel
       );
 
+
     // ==========================================
-    // VERIFICAR REINCIDÊNCIA PELO NOME DO JOGADOR
+    // VERIFICAR REINCIDÊNCIA
     // ==========================================
 
     let previousPunishments = [];
@@ -211,11 +245,40 @@ export async function execute(interaction) {
         limit: 100
       });
 
+
     const jogadorNormalizado =
-      jogador.trim().toLowerCase();
+      jogador
+        .trim()
+        .toLowerCase();
+
 
     for (const message of messages.values()) {
+
       for (const oldEmbed of message.embeds) {
+
+        // ------------------------------------------
+        // IGNORAR PUNIÇÕES REVOGADAS
+        // ------------------------------------------
+
+        const foiRevogada =
+          oldEmbed.title?.includes(
+            'PUNIÇÃO REVOGADA'
+          ) ||
+          oldEmbed.fields?.some(
+            field =>
+              field.name.includes('Status') &&
+              field.value.includes('REVOGADA')
+          );
+
+
+        if (foiRevogada) {
+          continue;
+        }
+
+
+        // ------------------------------------------
+        // PEGAR JOGADOR DA PUNIÇÃO ANTIGA
+        // ------------------------------------------
 
         const jogadorField =
           oldEmbed.fields?.find(
@@ -223,18 +286,27 @@ export async function execute(interaction) {
               field.name.includes('Jogador')
           );
 
+
         if (!jogadorField?.value) {
           continue;
         }
+
 
         const jogadorAnterior =
           jogadorField.value
             .trim()
             .toLowerCase();
 
+
+        // ------------------------------------------
+        // COMPARAR JOGADOR
+        // ------------------------------------------
+
         if (
-          jogadorAnterior === jogadorNormalizado
+          jogadorAnterior ===
+          jogadorNormalizado
         ) {
+
           previousPunishments.push(
             oldEmbed.title ||
             'Punição anterior'
@@ -243,11 +315,13 @@ export async function execute(interaction) {
       }
     }
 
+
     const reincidencia =
       previousPunishments.length;
 
+
     // ==========================================
-    // CRIAR EMBED DA PUNIÇÃO
+    // CRIAR EMBED
     // ==========================================
 
     const embed =
@@ -260,6 +334,7 @@ export async function execute(interaction) {
         )
 
         .addFields(
+
           {
             name: '👤 Jogador',
             value: jogador,
@@ -286,7 +361,8 @@ export async function execute(interaction) {
           {
             name: '⏱️ Duração',
             value:
-              punicao === 'ban_permanente'
+              punicao ===
+              'ban_permanente'
                 ? 'Permanente'
                 : duracao ||
                   'Não se aplica',
@@ -316,10 +392,12 @@ export async function execute(interaction) {
 
           {
             name: '⚠️ Reincidência',
+
             value:
               reincidencia > 0
                 ? `🚨 REINCIDENTE — ${reincidencia} punição(ões) anterior(es)`
                 : '✅ Nenhuma punição anterior',
+
             inline: false
           },
 
@@ -328,6 +406,7 @@ export async function execute(interaction) {
             value: motivo,
             inline: false
           }
+
         )
 
         .setFooter({
@@ -337,19 +416,32 @@ export async function execute(interaction) {
 
         .setTimestamp();
 
+
+    // ==========================================
+    // ENVIAR LOG
+    // ==========================================
+
     await logChannel.send({
       embeds: [embed]
     });
+
+
+    // ==========================================
+    // CONFIRMAR
+    // ==========================================
 
     await interaction.editReply(
       `✅ Punição **${punishmentId}** registrada com sucesso em <#${PUNISHMENT_LOG_CHANNEL_ID}>.`
     );
 
+
   } catch (error) {
+
     console.error(
       'Erro ao registrar punição:',
       error
     );
+
 
     await interaction.editReply(
       '❌ Ocorreu um erro ao registrar a punição.'
