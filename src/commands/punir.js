@@ -11,18 +11,12 @@ export const data = new SlashCommandBuilder()
   .setName('punir')
   .setDescription('Registra uma punição no histórico do Brasil Mega Lite.')
 
+  // OBRIGATÓRIOS PRIMEIRO
   .addStringOption(option =>
     option
       .setName('jogador')
       .setDescription('Nome do jogador punido')
       .setRequired(true)
-  )
-
-  .addStringOption(option =>
-    option
-      .setName('identificador')
-      .setDescription('ID, conta ou serial do jogador')
-      .setRequired(false)
   )
 
   .addStringOption(option =>
@@ -52,17 +46,25 @@ export const data = new SlashCommandBuilder()
 
   .addStringOption(option =>
     option
-      .setName('duracao')
-      .setDescription('Duração da punição. Ex: 3 dias, 7 dias, 30 dias')
+      .setName('motivo')
+      .setDescription('Motivo da punição')
+      .setRequired(true)
+      .setMaxLength(1000)
+  )
+
+  // OPCIONAIS DEPOIS
+  .addStringOption(option =>
+    option
+      .setName('identificador')
+      .setDescription('ID, conta ou serial do jogador')
       .setRequired(false)
   )
 
   .addStringOption(option =>
     option
-      .setName('motivo')
-      .setDescription('Motivo da punição')
-      .setRequired(true)
-      .setMaxLength(1000)
+      .setName('duracao')
+      .setDescription('Duração da punição. Ex: 3 dias, 7 dias, 30 dias')
+      .setRequired(false)
   )
 
   .addStringOption(option =>
@@ -94,7 +96,6 @@ function punishmentName(type) {
 
 
 async function getNextPunishmentId(channel) {
-
   const messages = await channel.messages.fetch({
     limit: 100
   });
@@ -102,18 +103,12 @@ async function getNextPunishmentId(channel) {
   let highest = 0;
 
   for (const message of messages.values()) {
-
     for (const embed of message.embeds) {
-
-      const match =
-        embed.title?.match(
-          /PUN-(\d+)/
-        );
+      const match = embed.title?.match(/PUN-(\d+)/);
 
       if (!match) continue;
 
-      const number =
-        Number(match[1]);
+      const number = Number(match[1]);
 
       if (number > highest) {
         highest = number;
@@ -121,14 +116,11 @@ async function getNextPunishmentId(channel) {
     }
   }
 
-  return `PUN-${String(
-    highest + 1
-  ).padStart(4, '0')}`;
+  return `PUN-${String(highest + 1).padStart(4, '0')}`;
 }
 
 
 export async function execute(interaction) {
-
   const authorized =
     interaction.memberPermissions?.has(
       PermissionFlagsBits.Administrator
@@ -137,34 +129,23 @@ export async function execute(interaction) {
       REPORT_ROLE_ID
     );
 
-
   if (!authorized) {
-
     return interaction.reply({
       content:
         '❌ Apenas a **Equipe de Denúncias** ou administradores podem registrar punições.',
       ephemeral: true
     });
-
   }
-
 
   await interaction.deferReply({
     ephemeral: true
   });
 
-
   try {
-
     const jogador =
       interaction.options.getString(
         'jogador',
         true
-      );
-
-    const identificador =
-      interaction.options.getString(
-        'identificador'
       );
 
     const punicao =
@@ -173,15 +154,20 @@ export async function execute(interaction) {
         true
       );
 
-    const duracao =
-      interaction.options.getString(
-        'duracao'
-      );
-
     const motivo =
       interaction.options.getString(
         'motivo',
         true
+      );
+
+    const identificador =
+      interaction.options.getString(
+        'identificador'
+      );
+
+    const duracao =
+      interaction.options.getString(
+        'duracao'
       );
 
     const denuncia =
@@ -189,39 +175,30 @@ export async function execute(interaction) {
         'denuncia'
       );
 
-
     if (
       punicao === 'ban_temporario' &&
       !duracao
     ) {
-
       return interaction.editReply(
         '❌ Para um **ban temporário**, informe a duração da punição.'
       );
-
     }
-
 
     const logChannel =
       await interaction.guild.channels.fetch(
         PUNISHMENT_LOG_CHANNEL_ID
       );
 
-
     if (!logChannel?.isTextBased()) {
-
       return interaction.editReply(
         '❌ O canal de logs de punições não foi encontrado.'
       );
-
     }
-
 
     const punishmentId =
       await getNextPunishmentId(
         logChannel
       );
-
 
     const embed =
       new EmbedBuilder()
@@ -233,7 +210,6 @@ export async function execute(interaction) {
         )
 
         .addFields(
-
           {
             name: '👤 Jogador',
             value: jogador,
@@ -260,18 +236,15 @@ export async function execute(interaction) {
           {
             name: '⏱️ Duração',
             value:
-              punicao ===
-              'ban_permanente'
+              punicao === 'ban_permanente'
                 ? 'Permanente'
-                : duracao ||
-                  'Não se aplica',
+                : duracao || 'Não se aplica',
             inline: true
           },
 
           {
             name: '🛡️ Staff responsável',
-            value:
-              `${interaction.user}`,
+            value: `${interaction.user}`,
             inline: true
           },
 
@@ -294,7 +267,6 @@ export async function execute(interaction) {
             value: motivo,
             inline: false
           }
-
         )
 
         .setFooter({
@@ -304,29 +276,22 @@ export async function execute(interaction) {
 
         .setTimestamp();
 
-
     await logChannel.send({
       embeds: [embed]
     });
-
 
     await interaction.editReply(
       `✅ Punição **${punishmentId}** registrada com sucesso em <#${PUNISHMENT_LOG_CHANNEL_ID}>.`
     );
 
-
   } catch (error) {
-
     console.error(
       'Erro ao registrar punição:',
       error
     );
 
-
     await interaction.editReply(
       '❌ Ocorreu um erro ao registrar a punição.'
     );
-
   }
-
 }
