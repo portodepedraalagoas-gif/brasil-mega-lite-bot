@@ -199,28 +199,25 @@ export async function execute(interaction) {
       await getNextPunishmentId(
         logChannel
       );
-    // VERIFICAR REINCIDÊNCIA PELO IDENTIFICADOR
+    // VERIFICAR REINCIDÊNCIA PELO JOGADOR
 let previousPunishments = [];
 
-if (identificador) {
-  const messages = await logChannel.messages.fetch({
-    limit: 100
-  });
+const messages = await logChannel.messages.fetch({
+  limit: 100
+});
 
-  for (const message of messages.values()) {
-    for (const oldEmbed of message.embeds) {
-      const idField = oldEmbed.fields?.find(
-        field => field.name === '🆔 Identificador'
+for (const message of messages.values()) {
+  for (const oldEmbed of message.embeds) {
+    const jogadorField = oldEmbed.fields?.find(
+      field => field.name.includes('Jogador')
+    );
+
+    if (
+      jogadorField?.value?.includes(`<@${jogador.id}>`)
+    ) {
+      previousPunishments.push(
+        oldEmbed.title || 'Punição anterior'
       );
-
-      if (
-        idField?.value?.trim().toLowerCase() ===
-        identificador.trim().toLowerCase()
-      ) {
-        previousPunishments.push(
-          oldEmbed.title || 'Punição anterior'
-        );
-      }
     }
   }
 }
