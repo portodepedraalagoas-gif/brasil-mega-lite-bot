@@ -95,7 +95,7 @@ function punishmentName(type) {
 }
 
 
-async function getNextPunishmentId(channel) {
+export async function getNextPunishmentId(channel) {
   const messages = await channel.messages.fetch({
     limit: 100
   });
