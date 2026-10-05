@@ -1709,7 +1709,7 @@ if (
 
   // Pega o ID do dono salvo no tópico do canal
   const ownerId =
-    interaction.channel?.topic?.match(/owner:(\d+)/)?.[1];
+  interaction.channel?.topic?.match(/owner[=:](\d+)/)?.[1];
 
   if (!ownerId) {
     await interaction.reply({
