@@ -560,7 +560,6 @@ if (ownerId) {
       error
     );
   }
-}
 
 // FECHA A FUNÇÃO archiveTicket
 }
