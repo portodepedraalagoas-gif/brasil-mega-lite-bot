@@ -379,7 +379,6 @@ async function archiveTicket(
   type,
   ownerId
 ) {
-
   const logChannel =
     await interaction.guild.channels.fetch(
       TICKET_LOG_CHANNEL_ID
@@ -391,10 +390,18 @@ async function archiveTicket(
     );
   }
 
+  // ==========================================
+  // BUSCAR TODAS AS MENSAGENS DO TICKET
+  // ==========================================
+
   const messages =
     await fetchAllMessages(
       interaction.channel
     );
+
+  // ==========================================
+  // GERAR HTML DO TRANSCRIPT
+  // ==========================================
 
   const html =
     buildTranscriptHtml(
@@ -405,6 +412,10 @@ async function archiveTicket(
       interaction.user
     );
 
+  // ==========================================
+  // CRIAR ARQUIVO DO TRANSCRIPT
+  // ==========================================
+
   const transcript =
     new AttachmentBuilder(
       Buffer.from(html, 'utf8'),
@@ -413,6 +424,10 @@ async function archiveTicket(
           `transcript-${interaction.channel.name}-${Date.now()}.html`
       }
     );
+
+  // ==========================================
+  // EMBED DOS LOGS
+  // ==========================================
 
   const logEmbed =
     new EmbedBuilder()
@@ -428,7 +443,6 @@ async function archiveTicket(
       )
 
       .addFields(
-
         {
           name: '👤 Criado por',
           value: ownerId
@@ -473,7 +487,6 @@ async function archiveTicket(
             `#${interaction.channel.name}`,
           inline: true
         }
-
       )
 
       .setFooter({
@@ -483,86 +496,112 @@ async function archiveTicket(
 
       .setTimestamp();
 
+  // ==========================================
+  // ENVIAR TRANSCRIPT PARA O CANAL DE LOGS
+  // ==========================================
+
   await logChannel.send({
     embeds: [logEmbed],
     files: [transcript]
   });
-}
 
-// ==========================================
-// ENVIAR TRANSCRIPT NO PV DO DONO DO TICKET
-// ==========================================
+  // ==========================================
+  // ENVIAR TRANSCRIPT NO PV DO DONO DO TICKET
+  // ==========================================
 
-const ownerId = interaction.channel.topic?.match(/owner:(\d+)/)?.[1];
-if (ownerId) {
-  try {
-    const owner =
-      await interaction.client.users.fetch(ownerId);
+  if (ownerId) {
+    try {
+      const owner =
+        await interaction.client.users.fetch(
+          ownerId
+        );
 
-    const dmEmbed =
-      new EmbedBuilder()
-        .setColor(0x8e44ad)
+      const dmEmbed =
+        new EmbedBuilder()
 
-        .setTitle('🔒 SEU TICKET FOI ENCERRADO')
+          .setColor(0x8e44ad)
 
-        .setDescription(
-          'Seu atendimento no **Brasil Mega Lite** foi finalizado.\n\n' +
-          '📄 O histórico completo da conversa está anexado abaixo.'
-        )
+          .setTitle(
+            '🔒 SEU TICKET FOI ENCERRADO'
+          )
 
-        .addFields(
+          .setDescription(
+            'Seu atendimento no **Brasil Mega Lite** foi finalizado.\n\n' +
+            '📄 O histórico completo da conversa está anexado abaixo.'
+          )
+
+          .addFields(
+            {
+              name: '📂 Setor',
+              value:
+                TYPE[type]?.label ||
+                type ||
+                'Não identificado',
+              inline: true
+            },
+
+            {
+              name: '🛡️ Encerrado por',
+              value:
+                `${interaction.user}`,
+              inline: true
+            },
+
+            {
+              name: '💬 Mensagens',
+              value:
+                String(messages.length),
+              inline: true
+            },
+
+            {
+              name: '📁 Ticket',
+              value:
+                `#${interaction.channel.name}`,
+              inline: true
+            }
+          )
+
+          .setFooter({
+            text:
+              'Brasil Mega Lite • Sistema de Atendimento'
+          })
+
+          .setTimestamp();
+
+      // Cria uma NOVA instância do arquivo
+      // para enviar no PV.
+      const dmTranscript =
+        new AttachmentBuilder(
+          Buffer.from(html, 'utf8'),
           {
-            name: '📂 Setor',
-            value:
-              TYPE[type]?.label ||
-              type ||
-              'Não identificado',
-            inline: true
-          },
-          {
-            name: '🛡️ Encerrado por',
-            value: interaction.user.username,
-            inline: true
-          },
-          {
-            name: '💬 Mensagens',
-            value: String(messages.length),
-            inline: true
+            name:
+              `transcript-${interaction.channel.name}-${Date.now()}.html`
           }
-        )
+        );
 
-        .setFooter({
-          text: 'Brasil Mega Lite • Sistema de Atendimento'
-        })
+      await owner.send({
+        embeds: [dmEmbed],
+        files: [dmTranscript]
+      });
 
-        .setTimestamp();
-
-    const dmTranscript =
-      new AttachmentBuilder(
-        Buffer.from(html, 'utf8'),
-        {
-          name:
-            `transcript-${interaction.channel.name}-${Date.now()}.html`
-        }
+      console.log(
+        `✅ Transcript enviado no PV de ${owner.tag}`
       );
 
-    await owner.send({
-      embeds: [dmEmbed],
-      files: [dmTranscript]
-    });
-
+    } catch (error) {
+      // Se o usuário estiver com PV fechado,
+      // o ticket continua sendo encerrado normalmente.
+      console.error(
+        `❌ Não foi possível enviar o transcript no PV de ${ownerId}:`,
+        error
+      );
+    }
+  } else {
     console.log(
-      `✅ Transcript enviado no PV de ${owner.tag}`
-    );
-
-  } catch (error) {
-    console.error(
-      '❌ Não foi possível enviar o transcript no PV:',
-      error
+      '⚠️ Ticket sem ownerId. Transcript não enviado por PV.'
     );
   }
-
-// FECHA A FUNÇÃO archiveTicket
 }
 
 // ======================================================
