@@ -1708,9 +1708,13 @@ if (
   }
 
   // Pega o ID do dono salvo no tópico do canal
-  const ownerId =
-  interaction.channel?.topic?.match(/owner[=:](\d+)/)?.[1];
+ const topic = interaction.channel?.topic || '';
 
+const ownerMatch = topic.match(/owner\s*=\s*(\d+)/i);
+const ownerId = ownerMatch?.[1];
+
+console.log('🔎 Tópico detectado:', topic);
+console.log('🔎 Owner detectado:', ownerId);
   if (!ownerId) {
     await interaction.reply({
       content: '❌ Não consegui identificar quem abriu este ticket.',
