@@ -52,7 +52,257 @@ const safeName = v =>
     .replace(/-+/g, '-')
     .slice(0, 35);
 
+// ======================================================
+// AVISO DE RESPOSTA DA STAFF NO PV
+// ======================================================
 
+const notifiedTickets = new Set();
+
+export async function handleTicketMessage(
+  message
+) {
+
+  // Ignora bots
+  if (
+    message.author.bot
+  ) {
+    return;
+  }
+
+  // Ignora mensagens fora de servidores
+  if (
+    !message.guild
+  ) {
+    return;
+  }
+
+  // Canal precisa possuir tópico
+  const topic =
+    message.channel?.topic;
+
+  if (
+    !topic ||
+    !topic.includes('BML ticket')
+  ) {
+    return;
+  }
+
+  // ==========================================
+  // IDENTIFICAR DONO E TIPO DO TICKET
+  // ==========================================
+
+  const ownerId =
+    topic.match(
+      /owner=(\d+)/
+    )?.[1];
+
+  const type =
+    topic.match(
+      /type=([a-zA-Z0-9_-]+)/
+    )?.[1];
+
+  if (
+    !ownerId ||
+    !type ||
+    !TYPE[type]
+  ) {
+    return;
+  }
+
+  // ==========================================
+  // NÃO AVISAR QUANDO O PRÓPRIO DONO RESPONDE
+  // ==========================================
+
+  if (
+    message.author.id === ownerId
+  ) {
+    return;
+  }
+
+  // ==========================================
+  // VERIFICAR SE É STAFF
+  // ==========================================
+
+  const isAdministrator =
+    message.member?.permissions?.has(
+      PermissionFlagsBits.Administrator
+    );
+
+  const hasStaffRole =
+    TYPE[type]
+      .roles()
+      .some(
+        roleId =>
+          Boolean(
+            roleId &&
+            message.member?.roles?.cache?.has(
+              roleId
+            )
+          )
+      );
+
+  if (
+    !isAdministrator &&
+    !hasStaffRole
+  ) {
+    return;
+  }
+
+  // ==========================================
+  // EVITAR SPAM
+  // ==========================================
+
+  if (
+    notifiedTickets.has(
+      message.channel.id
+    )
+  ) {
+    return;
+  }
+
+  // Marca antes do envio para impedir duas
+  // mensagens simultâneas da staff.
+  notifiedTickets.add(
+    message.channel.id
+  );
+
+  try {
+
+    // ========================================
+    // BUSCAR DONO DO TICKET
+    // ========================================
+
+    const owner =
+      await message.client.users.fetch(
+        ownerId
+      );
+
+    // ========================================
+    // LINK DIRETO PARA O TICKET
+    // ========================================
+
+    const ticketLink =
+      `https://discord.com/channels/${message.guild.id}/${message.channel.id}`;
+
+    // ========================================
+    // EMBED DO AVISO
+    // ========================================
+
+    const embed =
+      new EmbedBuilder()
+
+        .setColor(
+          0x3498db
+        )
+
+        .setTitle(
+          '🔔 SEU TICKET FOI RESPONDIDO'
+        )
+
+        .setDescription(
+          'Um membro da equipe respondeu ao seu atendimento no **Brasil Mega Lite**.\n\n' +
+          'Acesse o ticket para visualizar a resposta e continuar o atendimento.'
+        )
+
+        .addFields(
+          {
+            name:
+              '📂 Setor',
+            value:
+              TYPE[type]?.label ||
+              type,
+            inline:
+              true
+          },
+
+          {
+            name:
+              '🛡️ Respondido por',
+            value:
+              `${message.author}`,
+            inline:
+              true
+          },
+
+          {
+            name:
+              '🎫 Ticket',
+            value:
+              `#${message.channel.name}`,
+            inline:
+              false
+          }
+        )
+
+        .setFooter({
+          text:
+            'Brasil Mega Lite • Sistema de Atendimento'
+        })
+
+        .setTimestamp();
+
+    // ========================================
+    // BOTÃO PARA ABRIR O TICKET
+    // ========================================
+
+    const button =
+      new ButtonBuilder()
+
+        .setLabel(
+          'Ir para o ticket'
+        )
+
+        .setEmoji(
+          '📩'
+        )
+
+        .setStyle(
+          ButtonStyle.Link
+        )
+
+        .setURL(
+          ticketLink
+        );
+
+    const row =
+      new ActionRowBuilder()
+
+        .addComponents(
+          button
+        );
+
+    // ========================================
+    // ENVIAR PV
+    // ========================================
+
+    await owner.send({
+      embeds: [
+        embed
+      ],
+
+      components: [
+        row
+      ]
+    });
+
+    console.log(
+      `✅ ${owner.tag} avisado sobre resposta no ticket ${message.channel.name}.`
+    );
+
+  } catch (error) {
+
+    // Se a DM estiver fechada, remove da lista
+    // para permitir uma nova tentativa depois.
+    notifiedTickets.delete(
+      message.channel.id
+    );
+
+    console.error(
+      `❌ Não foi possível avisar ${ownerId} no PV:`,
+      error
+    );
+  }
+}
 // ======================================================
 // TRANSCRIPT / LOGS
 // ======================================================
