@@ -489,6 +489,81 @@ async function archiveTicket(
   });
 }
 
+// ==========================================
+// ENVIAR TRANSCRIPT NO PV DO DONO DO TICKET
+// ==========================================
+
+if (ownerId) {
+  try {
+    const owner =
+      await interaction.client.users.fetch(ownerId);
+
+    const dmEmbed =
+      new EmbedBuilder()
+        .setColor(0x8e44ad)
+
+        .setTitle('🔒 SEU TICKET FOI ENCERRADO')
+
+        .setDescription(
+          'Seu atendimento no **Brasil Mega Lite** foi finalizado.\n\n' +
+          '📄 O histórico completo da conversa está anexado abaixo.'
+        )
+
+        .addFields(
+          {
+            name: '📂 Setor',
+            value:
+              TYPE[type]?.label ||
+              type ||
+              'Não identificado',
+            inline: true
+          },
+          {
+            name: '🛡️ Encerrado por',
+            value: interaction.user.username,
+            inline: true
+          },
+          {
+            name: '💬 Mensagens',
+            value: String(messages.length),
+            inline: true
+          }
+        )
+
+        .setFooter({
+          text: 'Brasil Mega Lite • Sistema de Atendimento'
+        })
+
+        .setTimestamp();
+
+    const dmTranscript =
+      new AttachmentBuilder(
+        Buffer.from(html, 'utf8'),
+        {
+          name:
+            `transcript-${interaction.channel.name}-${Date.now()}.html`
+        }
+      );
+
+    await owner.send({
+      embeds: [dmEmbed],
+      files: [dmTranscript]
+    });
+
+    console.log(
+      `✅ Transcript enviado no PV de ${owner.tag}`
+    );
+
+  } catch (error) {
+    console.error(
+      '❌ Não foi possível enviar o transcript no PV:',
+      error
+    );
+  }
+}
+
+// FECHA A FUNÇÃO archiveTicket
+}
 
 // ======================================================
 // BOTÕES DO TICKET
