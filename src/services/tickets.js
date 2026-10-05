@@ -873,7 +873,16 @@ function ticketButtons(type) {
           .setStyle(
             ButtonStyle.Primary
           ),
-
+new ButtonBuilder()
+  .setCustomId(
+    `ticket_notify:${type}`
+  )
+  .setLabel('Notificar usuário')
+  .setEmoji('🔔')
+  .setStyle(
+    ButtonStyle.Secondary
+  ),
+        
         new ButtonBuilder()
           .setCustomId(
             `ticket_close:${type}`
@@ -1677,7 +1686,176 @@ if (accepted) {
 export async function handleTicketInteraction(
   interaction
 ) {
+// ==========================================
+// NOTIFICAR DONO DO TICKET NO PV
+// ==========================================
 
+if (
+  interaction.isButton() &&
+  interaction.customId.startsWith('ticket_notify:')
+) {
+
+  const type = interaction.customId.split(':')[1];
+
+  // Só staff responsável pelo setor pode usar
+  if (!canManage(interaction, type)) {
+    await interaction.reply({
+      content: '❌ Você não tem permissão para notificar o usuário deste ticket.',
+      ephemeral: true
+    });
+
+    return true;
+  }
+
+  // Pega o ID do dono salvo no tópico do canal
+  const ownerId =
+    interaction.channel?.topic?.match(/owner:(\d+)/)?.[1];
+
+  if (!ownerId) {
+    await interaction.reply({
+      content: '❌ Não consegui identificar quem abriu este ticket.',
+      ephemeral: true
+    });
+
+    return true;
+  }
+
+  // ==========================================
+  // COOLDOWN DE 5 MINUTOS
+  // ==========================================
+
+  if (!globalThis.ticketNotifyCooldowns) {
+    globalThis.ticketNotifyCooldowns = new Map();
+  }
+
+  const cooldowns = globalThis.ticketNotifyCooldowns;
+
+  const lastNotification =
+    cooldowns.get(interaction.channel.id);
+
+  const cooldownTime = 5 * 60 * 1000;
+
+  if (
+    lastNotification &&
+    Date.now() - lastNotification < cooldownTime
+  ) {
+
+    const remaining =
+      cooldownTime -
+      (Date.now() - lastNotification);
+
+    const minutes =
+      Math.ceil(remaining / 60000);
+
+    await interaction.reply({
+      content:
+        `⏳ Este usuário já foi notificado recentemente. Aguarde aproximadamente **${minutes} minuto(s)** para notificá-lo novamente.`,
+      ephemeral: true
+    });
+
+    return true;
+  }
+
+  try {
+
+    const owner =
+      await interaction.client.users.fetch(ownerId);
+
+    const notifyEmbed =
+      new EmbedBuilder()
+
+        .setColor(0xf1c40f)
+
+        .setTitle('🔔 SEU TICKET ESTÁ AGUARDANDO VOCÊ')
+
+        .setDescription(
+          'A equipe do **Brasil Mega Lite** está aguardando sua resposta em um ticket.\n\n' +
+          'Clique no botão abaixo para voltar diretamente ao atendimento.'
+        )
+
+        .addFields(
+          {
+            name: '📂 Setor',
+            value:
+              TYPE[type]?.label ||
+              type ||
+              'Não identificado',
+            inline: true
+          },
+
+          {
+            name: '🛡️ Staff aguardando',
+            value: `${interaction.user}`,
+            inline: true
+          }
+        )
+
+        .setFooter({
+          text:
+            'Brasil Mega Lite • Sistema de Atendimento'
+        })
+
+        .setTimestamp();
+
+
+    const ticketLink =
+      `https://discord.com/channels/${interaction.guild.id}/${interaction.channel.id}`;
+
+
+    const row =
+      new ActionRowBuilder()
+        .addComponents(
+
+          new ButtonBuilder()
+            .setLabel('Voltar ao ticket')
+            .setEmoji('🎫')
+            .setStyle(ButtonStyle.Link)
+            .setURL(ticketLink)
+
+        );
+
+
+    await owner.send({
+      embeds: [notifyEmbed],
+      components: [row]
+    });
+
+
+    // Só ativa o cooldown se a DM for enviada
+    cooldowns.set(
+      interaction.channel.id,
+      Date.now()
+    );
+
+
+    await interaction.reply({
+      content:
+        `✅ ${owner} foi notificado no privado para responder o ticket.`,
+      ephemeral: true
+    });
+
+
+    console.log(
+      `🔔 ${interaction.user.tag} notificou ${owner.tag} no ticket ${interaction.channel.name}.`
+    );
+
+  } catch (error) {
+
+    console.error(
+      '❌ Erro ao notificar usuário do ticket:',
+      error
+    );
+
+    await interaction.reply({
+      content:
+        '❌ Não consegui enviar a notificação. O usuário pode estar com as mensagens privadas desativadas.',
+      ephemeral: true
+    });
+
+  }
+
+  return true;
+}
   if (interaction.isButton()) {
         // REGISTRAR PUNIÇÃO DE UMA DENÚNCIA ACEITA
     if (interaction.customId.startsWith('report_punish:')) {
