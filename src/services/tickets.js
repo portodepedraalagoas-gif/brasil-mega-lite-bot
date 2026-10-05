@@ -493,6 +493,7 @@ async function archiveTicket(
 // ENVIAR TRANSCRIPT NO PV DO DONO DO TICKET
 // ==========================================
 
+const ownerId = interaction.channel.topic?.match(/owner:(\d+)/)?.[1];
 if (ownerId) {
   try {
     const owner =
