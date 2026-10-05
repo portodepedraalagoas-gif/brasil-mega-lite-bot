@@ -7,10 +7,18 @@ import {
   ActivityType
 } from 'discord.js';
 
-import { config, validateConfig } from './config.js';
+import {
+  config,
+  validateConfig
+} from './config.js';
+
 import { queryMta } from './services/mta.js';
 import { startPanelUpdater } from './services/panel.js';
-import { handleTicketInteraction } from './services/tickets.js';
+
+import {
+  handleTicketInteraction,
+  handleTicketMessage
+} from './services/tickets.js';
 
 import * as tickets from './commands/tickets.js';
 import * as status from './commands/status.js';
@@ -51,7 +59,8 @@ const commandModules = [
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages
   ]
 });
 
@@ -179,6 +188,32 @@ client.on(
       console.error(
         'Boas-vindas:',
         e
+      );
+
+    }
+  }
+);
+
+
+// ==========================================
+// RESPOSTAS DA STAFF NOS TICKETS
+// ==========================================
+
+client.on(
+  'messageCreate',
+  async message => {
+
+    try {
+
+      await handleTicketMessage(
+        message
+      );
+
+    } catch (error) {
+
+      console.error(
+        'Erro ao verificar resposta em ticket:',
+        error
       );
 
     }
