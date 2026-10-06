@@ -288,24 +288,11 @@ client.on(
             server
           );
 
-          const playerList =
-            Array.isArray(server?.players)
-              ? server.players
-              : [];
+        const playerCount =
+  Number(server?.players ?? 0);
 
-          const playerCount =
-            server?.numPlayers ??
-            server?.playersOnline ??
-            server?.onlinePlayers ??
-            playerList.length ??
-            0;
-
-          const maxPlayers =
-            server?.maxPlayers ??
-            server?.maxplayers ??
-            server?.max_players ??
-            server?.maxclients ??
-            '?';
+const maxPlayers =
+  Number(server?.max_players ?? 0);
 
           const serverName =
             server?.name ??
