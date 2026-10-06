@@ -917,7 +917,362 @@ client.on(
         return;
       }
 
+     // ====================================
+// TICKETS — CENTRAL ADMINISTRATIVA
+// ====================================
 
+if (
+  interaction.customId === 'admin_tickets' ||
+  interaction.customId === 'admin_tickets_refresh'
+) {
+
+  await interaction.deferUpdate();
+
+  try {
+
+    // Atualiza o cache de canais
+    await interaction.guild.channels.fetch();
+
+    // Procura somente tickets dentro da categoria configurada
+    const ticketChannels =
+      interaction.guild.channels.cache.filter(
+        channel =>
+          channel.parentId === config.ticketCategoryId &&
+          channel.isTextBased() &&
+          channel.topic?.includes('BML ticket')
+      );
+
+    const ticketsAbertos =
+      [...ticketChannels.values()];
+
+
+    // ==================================
+    // CONTAGEM POR CATEGORIA
+    // ==================================
+
+    const suporte =
+      ticketsAbertos.filter(
+        channel =>
+          channel.topic?.includes('type=suporte')
+      ).length;
+
+    const financeiro =
+      ticketsAbertos.filter(
+        channel =>
+          channel.topic?.includes('type=financeiro')
+      ).length;
+
+    const denuncias =
+      ticketsAbertos.filter(
+        channel =>
+          channel.topic?.includes('type=denuncia')
+      ).length;
+
+
+    // ==================================
+    // LISTA DOS TICKETS
+    // ==================================
+
+    let listaTickets = '';
+
+    if (ticketsAbertos.length === 0) {
+
+      listaTickets =
+        '🌙 **Nenhum ticket aberto no momento.**';
+
+    } else {
+
+      listaTickets =
+        ticketsAbertos
+          .slice(0, 15)
+          .map(
+            (channel, index) => {
+
+              const topic =
+                channel.topic || '';
+
+              const ownerId =
+                topic.match(
+                  /owner=(\d+)/
+                )?.[1];
+
+              const type =
+                topic.match(
+                  /type=([a-zA-Z0-9_-]+)/
+                )?.[1] || 'desconhecido';
+
+
+              let emoji = '🎫';
+              let tipoNome = type;
+
+              if (type === 'suporte') {
+                emoji = '🛠️';
+                tipoNome = 'Suporte';
+              }
+
+              if (type === 'financeiro') {
+                emoji = '💰';
+                tipoNome = 'Financeiro';
+              }
+
+              if (type === 'denuncia') {
+                emoji = '🚨';
+                tipoNome = 'Denúncia';
+              }
+
+
+              const dono =
+                ownerId
+                  ? `<@${ownerId}>`
+                  : 'Desconhecido';
+
+
+              return (
+                `\`${String(
+                  index + 1
+                ).padStart(2, '0')}\` ` +
+                `${emoji} ${channel} • **${tipoNome}**\n` +
+                `└ 👤 ${dono}`
+              );
+
+            }
+          )
+          .join('\n\n');
+
+
+      if (ticketsAbertos.length > 15) {
+
+        listaTickets +=
+          `\n\n*+${ticketsAbertos.length - 15} ticket(s) não exibido(s).*`;
+
+      }
+
+    }
+
+
+    // ==================================
+    // EMBED
+    // ==================================
+
+    const embed =
+      new EmbedBuilder()
+
+        .setColor(
+          0x3498db
+        )
+
+        .setTitle(
+          '🎫 CENTRAL DE TICKETS'
+        )
+
+        .setDescription(
+          '**Brasil Mega Lite • Atendimento**\n\n' +
+          listaTickets
+        )
+
+        .addFields(
+
+          {
+            name:
+              '🎫 Abertos',
+            value:
+              `**${ticketsAbertos.length}**`,
+            inline: true
+          },
+
+          {
+            name:
+              '🛠️ Suporte',
+            value:
+              `**${suporte}**`,
+            inline: true
+          },
+
+          {
+            name:
+              '💰 Financeiro',
+            value:
+              `**${financeiro}**`,
+            inline: true
+          },
+
+          {
+            name:
+              '🚨 Denúncias',
+            value:
+              `**${denuncias}**`,
+            inline: true
+          },
+
+          {
+            name:
+              '🕐 Atualização',
+            value:
+              `<t:${Math.floor(
+                Date.now() / 1000
+              )}:R>`,
+            inline: true
+          }
+
+        )
+
+        .setFooter({
+          text:
+            'Brasil Mega Lite • Central Administrativa'
+        })
+
+        .setTimestamp();
+
+
+    // ==================================
+    // BOTÕES
+    // ==================================
+
+    const row =
+      new ActionRowBuilder()
+
+        .addComponents(
+
+          new ButtonBuilder()
+
+            .setCustomId(
+              'admin_tickets_refresh'
+            )
+
+            .setLabel(
+              'Atualizar'
+            )
+
+            .setEmoji(
+              '🔄'
+            )
+
+            .setStyle(
+              ButtonStyle.Success
+            ),
+
+
+          new ButtonBuilder()
+
+            .setCustomId(
+              'admin_home'
+            )
+
+            .setLabel(
+              'Voltar'
+            )
+
+            .setEmoji(
+              '⬅️'
+            )
+
+            .setStyle(
+              ButtonStyle.Secondary
+            )
+
+        );
+
+
+    await interaction.editReply({
+      embeds: [
+        embed
+      ],
+      components: [
+        row
+      ]
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      '❌ Erro no painel de tickets:',
+      error
+    );
+
+
+    const embed =
+      new EmbedBuilder()
+
+        .setColor(
+          0xe74c3c
+        )
+
+        .setTitle(
+          '❌ ERRO — CENTRAL DE TICKETS'
+        )
+
+        .setDescription(
+          'Não foi possível carregar os tickets neste momento.'
+        )
+
+        .setFooter({
+          text:
+            'Brasil Mega Lite • Central Administrativa'
+        })
+
+        .setTimestamp();
+
+
+    const row =
+      new ActionRowBuilder()
+
+        .addComponents(
+
+          new ButtonBuilder()
+
+            .setCustomId(
+              'admin_tickets_refresh'
+            )
+
+            .setLabel(
+              'Tentar novamente'
+            )
+
+            .setEmoji(
+              '🔄'
+            )
+
+            .setStyle(
+              ButtonStyle.Primary
+            ),
+
+
+          new ButtonBuilder()
+
+            .setCustomId(
+              'admin_home'
+            )
+
+            .setLabel(
+              'Voltar'
+            )
+
+            .setEmoji(
+              '⬅️'
+            )
+
+            .setStyle(
+              ButtonStyle.Secondary
+            )
+
+        );
+
+
+    await interaction.editReply({
+      embeds: [
+        embed
+      ],
+      components: [
+        row
+      ]
+    });
+
+  }
+
+  return;
+}
+      
       // ====================================
       // VOLTAR PARA CENTRAL
       // ====================================
