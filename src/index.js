@@ -1272,6 +1272,340 @@ if (
 
   return;
 }
+
+      // ====================================
+// STAFF — CENTRAL ADMINISTRATIVA
+// ====================================
+
+if (
+  interaction.customId === 'admin_staff' ||
+  interaction.customId === 'admin_staff_refresh'
+) {
+  await interaction.deferUpdate();
+
+  try {
+    // ==================================
+    // CARGOS DA STAFF
+    // ==================================
+
+    const STAFF_ROLES = [
+      {
+        id: '1554346778801995866',
+        nome: 'Fundador',
+        emoji: '👑'
+      },
+      {
+        id: '1554353644013359124',
+        nome: 'Diretor',
+        emoji: '💎'
+      },
+      {
+        id: '1554353725169082470',
+        nome: 'Supervisor',
+        emoji: '🛡️'
+      },
+      {
+        id: '1554816161508761600',
+        nome: 'Administrador Geral',
+        emoji: '⚙️'
+      },
+      {
+        id: '1554816528036397077',
+        nome: 'Administrador',
+        emoji: '🔨'
+      },
+      {
+        id: '1555995165804597479',
+        nome: 'Moderador',
+        emoji: '🔰'
+      },
+      {
+        id: '1555995306649329774',
+        nome: 'Estagiário',
+        emoji: '📋'
+      },
+      {
+        id: '1556816812971135087',
+        nome: 'Developer',
+        emoji: '💻'
+      }
+    ];
+
+    const EQUIPE_STAFF_ID =
+      '1554536183457906709';
+
+
+    // ==================================
+    // ATUALIZA MEMBROS DO SERVIDOR
+    // ==================================
+
+    await interaction.guild.members.fetch();
+
+
+    // ==================================
+    // IDENTIFICA A STAFF
+    // ==================================
+
+    const todosMembros =
+      [...interaction.guild.members.cache.values()];
+
+    const membrosStaff =
+      todosMembros.filter(member =>
+        member.roles.cache.has(EQUIPE_STAFF_ID) ||
+        STAFF_ROLES.some(role =>
+          member.roles.cache.has(role.id)
+        )
+      );
+
+
+    // ==================================
+    // MONTA LISTA POR CARGO
+    // ==================================
+
+    let listaStaff = '';
+
+    for (const role of STAFF_ROLES) {
+
+      const membrosCargo =
+        membrosStaff.filter(member =>
+          member.roles.cache.has(role.id)
+        );
+
+      if (membrosCargo.length === 0) {
+        continue;
+      }
+
+      const nomes =
+        membrosCargo
+          .slice(0, 15)
+          .map(member =>
+            `└ ${member}`
+          )
+          .join('\n');
+
+      listaStaff +=
+        `\n${role.emoji} **${role.nome}**\n` +
+        `${nomes}\n`;
+    }
+
+
+    // ==================================
+    // MEMBROS SOMENTE COM "EQUIPE STAFF"
+    // ==================================
+
+    const semCargoDefinido =
+      membrosStaff.filter(member => {
+
+        const possuiCargo =
+          STAFF_ROLES.some(role =>
+            member.roles.cache.has(role.id)
+          );
+
+        return !possuiCargo;
+
+      });
+
+    if (semCargoDefinido.length > 0) {
+
+      const nomes =
+        semCargoDefinido
+          .slice(0, 15)
+          .map(member =>
+            `└ ${member}`
+          )
+          .join('\n');
+
+      listaStaff +=
+        `\n👥 **Equipe Staff**\n${nomes}\n`;
+    }
+
+
+    if (!listaStaff) {
+      listaStaff =
+        '\n🌙 **Nenhum membro da Staff encontrado.**';
+    }
+
+
+    // ==================================
+    // CONTADORES
+    // ==================================
+
+    const totalStaff =
+      membrosStaff.length;
+
+    const online =
+      membrosStaff.filter(member =>
+        member.presence?.status &&
+        member.presence.status !== 'offline'
+      ).length;
+
+    const offline =
+      totalStaff - online;
+
+
+    // ==================================
+    // EMBED
+    // ==================================
+
+    const embed =
+      new EmbedBuilder()
+
+        .setColor(0x9b59b6)
+
+        .setTitle(
+          '🛡️ CENTRAL DA STAFF'
+        )
+
+        .setDescription(
+          '**Brasil Mega Lite • Administração**\n' +
+          listaStaff
+        )
+
+        .addFields(
+          {
+            name: '👥 Staff Total',
+            value: `**${totalStaff}**`,
+            inline: true
+          },
+          {
+            name: '🟢 Online',
+            value: `**${online}**`,
+            inline: true
+          },
+          {
+            name: '⚫ Offline',
+            value: `**${offline}**`,
+            inline: true
+          },
+          {
+            name: '🕐 Atualização',
+            value:
+              `<t:${Math.floor(
+                Date.now() / 1000
+              )}:R>`,
+            inline: true
+          }
+        )
+
+        .setFooter({
+          text:
+            'Brasil Mega Lite • Central Administrativa'
+        })
+
+        .setTimestamp();
+
+
+    // ==================================
+    // BOTÕES
+    // ==================================
+
+    const row =
+      new ActionRowBuilder()
+
+        .addComponents(
+
+          new ButtonBuilder()
+            .setCustomId(
+              'admin_staff_refresh'
+            )
+            .setLabel(
+              'Atualizar'
+            )
+            .setEmoji('🔄')
+            .setStyle(
+              ButtonStyle.Success
+            ),
+
+          new ButtonBuilder()
+            .setCustomId(
+              'admin_home'
+            )
+            .setLabel(
+              'Voltar'
+            )
+            .setEmoji('⬅️')
+            .setStyle(
+              ButtonStyle.Secondary
+            )
+
+        );
+
+
+    await interaction.editReply({
+      embeds: [embed],
+      components: [row]
+    });
+
+
+  } catch (error) {
+
+    console.error(
+      '❌ Erro no painel da Staff:',
+      error
+    );
+
+    const embed =
+      new EmbedBuilder()
+
+        .setColor(0xe74c3c)
+
+        .setTitle(
+          '❌ ERRO — CENTRAL DA STAFF'
+        )
+
+        .setDescription(
+          'Não foi possível carregar os membros da Staff.'
+        )
+
+        .setFooter({
+          text:
+            'Brasil Mega Lite • Central Administrativa'
+        })
+
+        .setTimestamp();
+
+
+    const row =
+      new ActionRowBuilder()
+
+        .addComponents(
+
+          new ButtonBuilder()
+            .setCustomId(
+              'admin_staff_refresh'
+            )
+            .setLabel(
+              'Tentar novamente'
+            )
+            .setEmoji('🔄')
+            .setStyle(
+              ButtonStyle.Primary
+            ),
+
+          new ButtonBuilder()
+            .setCustomId(
+              'admin_home'
+            )
+            .setLabel(
+              'Voltar'
+            )
+            .setEmoji('⬅️')
+            .setStyle(
+              ButtonStyle.Secondary
+            )
+
+        );
+
+
+    await interaction.editReply({
+      embeds: [embed],
+      components: [row]
+    });
+
+  }
+
+  return;
+}
       
       // ====================================
       // VOLTAR PARA CENTRAL
@@ -1494,7 +1828,6 @@ if (
       }
 
     }
-
 
     // ======================================
     // SISTEMA DE TICKETS
