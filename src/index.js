@@ -248,7 +248,10 @@ client.on(
       )
     ) {
 
-      // Somente administradores
+      // ====================================
+      // PERMISSÃO
+      // ====================================
+
       if (
         !interaction.memberPermissions?.has(
           PermissionFlagsBits.Administrator
@@ -288,17 +291,23 @@ client.on(
             server
           );
 
-        const playerCount =
-  Number(server?.players ?? 0);
+          // Formato real retornado pela sua biblioteca
+          const playerCount =
+            Number(
+              server?.players ?? 0
+            );
 
-const maxPlayers =
-  Number(server?.max_players ?? 0);
+          const maxPlayers =
+            Number(
+              server?.max_players ?? 0
+            );
 
           const serverName =
             server?.name ??
             server?.hostname ??
             config.serverName ??
             'Brasil Mega Lite RP';
+
 
           const embed =
             new EmbedBuilder()
@@ -344,9 +353,36 @@ const maxPlayers =
 
                 {
                   name:
+                    '🎮 Gamemode',
+                  value:
+                    server?.gamemode ||
+                    'Não informado',
+                  inline: true
+                },
+
+                {
+                  name:
+                    '🗺️ Mapa',
+                  value:
+                    server?.map ||
+                    'Não informado',
+                  inline: true
+                },
+
+                {
+                  name:
+                    '🧩 Versão',
+                  value:
+                    server?.version ||
+                    'Não informada',
+                  inline: true
+                },
+
+                {
+                  name:
                     '🌐 Endereço',
                   value:
-                    '`151.242.227.118:22003`',
+                    `\`${config.mtaHost}:${config.mtaPort}\``,
                   inline: false
                 },
 
@@ -354,7 +390,7 @@ const maxPlayers =
                   name:
                     '🔗 Conexão direta',
                   value:
-                    '`mtasa://151.242.227.118:22003`',
+                    `\`mtasa://${config.mtaHost}:${config.mtaPort}\``,
                   inline: false
                 },
 
@@ -384,57 +420,43 @@ const maxPlayers =
               .addComponents(
 
                 new ButtonBuilder()
-
                   .setCustomId(
                     'admin_server_refresh'
                   )
-
                   .setLabel(
                     'Atualizar'
                   )
-
                   .setEmoji(
                     '🔄'
                   )
-
                   .setStyle(
                     ButtonStyle.Success
                   ),
 
-
                 new ButtonBuilder()
-
                   .setCustomId(
                     'admin_players'
                   )
-
                   .setLabel(
                     'Ver jogadores'
                   )
-
                   .setEmoji(
                     '👥'
                   )
-
                   .setStyle(
                     ButtonStyle.Primary
                   ),
 
-
                 new ButtonBuilder()
-
                   .setCustomId(
                     'admin_home'
                   )
-
                   .setLabel(
                     'Voltar'
                   )
-
                   .setEmoji(
                     '⬅️'
                   )
-
                   .setStyle(
                     ButtonStyle.Secondary
                   )
@@ -496,38 +518,29 @@ const maxPlayers =
               .addComponents(
 
                 new ButtonBuilder()
-
                   .setCustomId(
                     'admin_server_refresh'
                   )
-
                   .setLabel(
                     'Tentar novamente'
                   )
-
                   .setEmoji(
                     '🔄'
                   )
-
                   .setStyle(
                     ButtonStyle.Primary
                   ),
 
-
                 new ButtonBuilder()
-
                   .setCustomId(
                     'admin_home'
                   )
-
                   .setLabel(
                     'Voltar'
                   )
-
                   .setEmoji(
                     '⬅️'
                   )
-
                   .setStyle(
                     ButtonStyle.Secondary
                   )
@@ -551,19 +564,355 @@ const maxPlayers =
 
 
       // ====================================
-      // JOGADORES
+      // JOGADORES ONLINE
       // ====================================
 
       if (
         interaction.customId ===
-        'admin_players'
+          'admin_players' ||
+        interaction.customId ===
+          'admin_players_refresh'
       ) {
 
-        await interaction.reply({
-          content:
-            '👥 O painel de jogadores será configurado agora.',
-          ephemeral: true
-        });
+        await interaction.deferUpdate();
+
+        try {
+
+          const server =
+            await queryMta();
+
+          const playerCount =
+            Number(
+              server?.players ?? 0
+            );
+
+          const maxPlayers =
+            Number(
+              server?.max_players ?? 0
+            );
+
+
+          // ==================================
+          // TENTAR LOCALIZAR LISTA DE PLAYERS
+          // ==================================
+
+          const possibleLists = [
+            server?.playerList,
+            server?.playersList,
+            server?.player_list,
+            server?.clients,
+            server?.playerInfo,
+            server?.player_info
+          ];
+
+          const playerList =
+            possibleLists.find(
+              list =>
+                Array.isArray(list)
+            ) || [];
+
+
+          let jogadoresTexto;
+
+
+          // ==================================
+          // LISTA DISPONÍVEL
+          // ==================================
+
+          if (
+            playerList.length > 0
+          ) {
+
+            jogadoresTexto =
+              playerList
+                .slice(
+                  0,
+                  30
+                )
+                .map(
+                  (
+                    player,
+                    index
+                  ) => {
+
+                    if (
+                      typeof player ===
+                      'string'
+                    ) {
+
+                      return (
+                        `\`${String(
+                          index + 1
+                        ).padStart(
+                          2,
+                          '0'
+                        )}\` 🎮 **${player}**`
+                      );
+
+                    }
+
+
+                    const nome =
+                      player?.name ??
+                      player?.nick ??
+                      player?.nickname ??
+                      player?.player ??
+                      player?.username ??
+                      `Jogador ${index + 1}`;
+
+
+                    const ping =
+                      player?.ping;
+
+
+                    if (
+                      ping !== undefined &&
+                      ping !== null
+                    ) {
+
+                      return (
+                        `\`${String(
+                          index + 1
+                        ).padStart(
+                          2,
+                          '0'
+                        )}\` 🎮 **${nome}** • ${ping}ms`
+                      );
+
+                    }
+
+
+                    return (
+                      `\`${String(
+                        index + 1
+                      ).padStart(
+                        2,
+                        '0'
+                      )}\` 🎮 **${nome}**`
+                    );
+
+                  }
+                )
+                .join(
+                  '\n'
+                );
+
+
+          // ==================================
+          // EXISTEM PLAYERS, MAS SEM NOMES
+          // ==================================
+
+          } else if (
+            playerCount > 0
+          ) {
+
+            jogadoresTexto =
+              `🟢 Existem **${playerCount} jogador(es)** conectado(s) ao servidor.\n\n` +
+              '⚠️ A consulta ASE está retornando a quantidade de jogadores, mas não forneceu a lista de nomes.';
+
+
+          // ==================================
+          // SERVIDOR VAZIO
+          // ==================================
+
+          } else {
+
+            jogadoresTexto =
+              '🌙 **Nenhum jogador conectado no momento.**';
+
+          }
+
+
+          const embed =
+            new EmbedBuilder()
+
+              .setColor(
+                0x5865f2
+              )
+
+              .setTitle(
+                `👥 JOGADORES ONLINE — ${playerCount}/${maxPlayers}`
+              )
+
+              .setDescription(
+                jogadoresTexto
+              )
+
+              .addFields(
+
+                {
+                  name:
+                    '📡 Servidor',
+                  value:
+                    '🟢 **ONLINE**',
+                  inline: true
+                },
+
+                {
+                  name:
+                    '👥 Ocupação',
+                  value:
+                    `**${playerCount}/${maxPlayers}**`,
+                  inline: true
+                },
+
+                {
+                  name:
+                    '🕐 Atualização',
+                  value:
+                    `<t:${Math.floor(
+                      Date.now() / 1000
+                    )}:R>`,
+                  inline: true
+                }
+
+              )
+
+              .setFooter({
+                text:
+                  'Brasil Mega Lite • Central Administrativa'
+              })
+
+              .setTimestamp();
+
+
+          const row =
+            new ActionRowBuilder()
+
+              .addComponents(
+
+                new ButtonBuilder()
+                  .setCustomId(
+                    'admin_players_refresh'
+                  )
+                  .setLabel(
+                    'Atualizar'
+                  )
+                  .setEmoji(
+                    '🔄'
+                  )
+                  .setStyle(
+                    ButtonStyle.Success
+                  ),
+
+                new ButtonBuilder()
+                  .setCustomId(
+                    'admin_server'
+                  )
+                  .setLabel(
+                    'Servidor'
+                  )
+                  .setEmoji(
+                    '🟢'
+                  )
+                  .setStyle(
+                    ButtonStyle.Primary
+                  ),
+
+                new ButtonBuilder()
+                  .setCustomId(
+                    'admin_home'
+                  )
+                  .setLabel(
+                    'Voltar'
+                  )
+                  .setEmoji(
+                    '⬅️'
+                  )
+                  .setStyle(
+                    ButtonStyle.Secondary
+                  )
+
+              );
+
+
+          await interaction.editReply({
+            embeds: [
+              embed
+            ],
+            components: [
+              row
+            ]
+          });
+
+
+        } catch (error) {
+
+          console.error(
+            '❌ Erro ao consultar jogadores:',
+            error
+          );
+
+
+          const embed =
+            new EmbedBuilder()
+
+              .setColor(
+                0xe74c3c
+              )
+
+              .setTitle(
+                '❌ ERRO AO CONSULTAR JOGADORES'
+              )
+
+              .setDescription(
+                'Não foi possível consultar os jogadores do servidor neste momento.'
+              )
+
+              .setFooter({
+                text:
+                  'Brasil Mega Lite • Central Administrativa'
+              })
+
+              .setTimestamp();
+
+
+          const row =
+            new ActionRowBuilder()
+
+              .addComponents(
+
+                new ButtonBuilder()
+                  .setCustomId(
+                    'admin_players_refresh'
+                  )
+                  .setLabel(
+                    'Tentar novamente'
+                  )
+                  .setEmoji(
+                    '🔄'
+                  )
+                  .setStyle(
+                    ButtonStyle.Primary
+                  ),
+
+                new ButtonBuilder()
+                  .setCustomId(
+                    'admin_home'
+                  )
+                  .setLabel(
+                    'Voltar'
+                  )
+                  .setEmoji(
+                    '⬅️'
+                  )
+                  .setStyle(
+                    ButtonStyle.Secondary
+                  )
+
+              );
+
+
+          await interaction.editReply({
+            embeds: [
+              embed
+            ],
+            components: [
+              row
+            ]
+          });
+
+        }
 
         return;
       }
@@ -668,76 +1017,57 @@ const maxPlayers =
             .addComponents(
 
               new ButtonBuilder()
-
                 .setCustomId(
                   'admin_server'
                 )
-
                 .setLabel(
                   'Servidor'
                 )
-
                 .setEmoji(
                   '🟢'
                 )
-
                 .setStyle(
                   ButtonStyle.Success
                 ),
 
-
               new ButtonBuilder()
-
                 .setCustomId(
                   'admin_players'
                 )
-
                 .setLabel(
                   'Jogadores'
                 )
-
                 .setEmoji(
                   '👥'
                 )
-
                 .setStyle(
                   ButtonStyle.Primary
                 ),
 
-
               new ButtonBuilder()
-
                 .setCustomId(
                   'admin_tickets'
                 )
-
                 .setLabel(
                   'Tickets'
                 )
-
                 .setEmoji(
                   '🎫'
                 )
-
                 .setStyle(
                   ButtonStyle.Primary
                 ),
 
-
               new ButtonBuilder()
-
                 .setCustomId(
                   'admin_reports'
                 )
-
                 .setLabel(
                   'Denúncias'
                 )
-
                 .setEmoji(
                   '🚨'
                 )
-
                 .setStyle(
                   ButtonStyle.Danger
                 )
@@ -751,57 +1081,43 @@ const maxPlayers =
             .addComponents(
 
               new ButtonBuilder()
-
                 .setCustomId(
                   'admin_punishments'
                 )
-
                 .setLabel(
                   'Punições'
                 )
-
                 .setEmoji(
                   '🔨'
                 )
-
                 .setStyle(
                   ButtonStyle.Danger
                 ),
 
-
               new ButtonBuilder()
-
                 .setCustomId(
                   'admin_staff'
                 )
-
                 .setLabel(
                   'Staff'
                 )
-
                 .setEmoji(
                   '🛡️'
                 )
-
                 .setStyle(
                   ButtonStyle.Secondary
                 ),
 
-
               new ButtonBuilder()
-
                 .setCustomId(
                   'admin_logs'
                 )
-
                 .setLabel(
                   'Logs'
                 )
-
                 .setEmoji(
                   '📋'
                 )
-
                 .setStyle(
                   ButtonStyle.Secondary
                 )
