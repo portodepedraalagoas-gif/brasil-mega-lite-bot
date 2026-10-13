@@ -36,6 +36,8 @@ import * as punir from './commands/punir.js';
 import * as historico from './commands/historico.js';
 import * as revogarpunicao from './commands/revogarpunicao.js';
 import * as admin from './commands/admin.js';
+import * as automod from './commands/automod.js';
+import { handleAutoModMessage, handleAutoModInteraction } from './services/automod.js';
 import { startTranscriptWebServer } from './services/transcriptWeb.js';
 
 validateConfig();
@@ -56,7 +58,8 @@ const commandModules = [
   punir,
   historico,
   revogarpunicao,
-  admin
+  admin,
+  automod
 ];
 
 
@@ -68,7 +71,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -213,6 +217,8 @@ client.on(
 
     try {
 
+      await handleAutoModMessage(message, config);
+
       await handleTicketMessage(
         message
       );
@@ -237,6 +243,9 @@ client.on(
   'interactionCreate',
   async interaction => {
 
+
+    // Painel AutoMod (sem interferir nos tickets)
+    if (await handleAutoModInteraction(interaction, config)) return;
 
     // ======================================
     // CENTRAL ADMINISTRATIVA
