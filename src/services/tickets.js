@@ -841,11 +841,19 @@ async function archiveTicket(
           }
         );
 
-      await owner.send({
-        embeds: [dmEmbed],
-        files: [dmTranscript]
-      });
-
+     await owner.send({
+  embeds: [dmEmbed],
+  files: [dmTranscript],
+  components: [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('Visualizar transcript')
+        .setEmoji('📜')
+        .setStyle(ButtonStyle.Link)
+        .setURL(transcriptUrl)
+    )
+  ]
+});
       console.log(
         `✅ Transcript enviado no PV de ${owner.tag}`
       );
