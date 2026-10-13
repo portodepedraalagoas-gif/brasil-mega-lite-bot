@@ -18,6 +18,7 @@ export const config = {
   financeRoleId: process.env.FINANCE_ROLE_ID || '1555912138151960656',
   reportAcceptedChannelId: process.env.REPORT_ACCEPTED_CHANNEL_ID || '1555909005862248498',
   reportDeniedChannelId: process.env.REPORT_DENIED_CHANNEL_ID || '1555909063219355678',
+  automodLogChannelId: process.env.AUTOMOD_LOG_CHANNEL_ID || '',
 };
 
 export function validateConfig() {
