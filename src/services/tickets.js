@@ -13,6 +13,7 @@ import {
 
 import { config } from '../config.js';
 import { getNextPunishmentId } from '../commands/punir.js';
+import { saveTranscript } from './transcriptWeb.js';
 
 const TICKET_LOG_CHANNEL_ID = '1555924703695339581';
 const PUNISHMENT_LOG_CHANNEL_ID = '1555949299597049936';
@@ -662,6 +663,10 @@ async function archiveTicket(
       interaction.user
     );
 
+  // Salva o histórico em armazenamento persistente antes de excluir o canal.
+  // Se falhar, o ticket permanece aberto para evitar perda de dados.
+  const transcriptUrl = await saveTranscript(html);
+
   // ==========================================
   // CRIAR ARQUIVO DO TRANSCRIPT
   // ==========================================
@@ -689,7 +694,7 @@ async function archiveTicket(
       )
 
       .setDescription(
-        'O histórico completo do atendimento está anexado abaixo.'
+        'O histórico está anexado e também disponível pelo botão abaixo.'
       )
 
       .addFields(
@@ -752,7 +757,13 @@ async function archiveTicket(
 
   await logChannel.send({
     embeds: [logEmbed],
-    files: [transcript]
+    files: [transcript],
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('📜 Visualizar transcript')
+        .setStyle(ButtonStyle.Link)
+        .setURL(transcriptUrl)
+    )]
   });
 
   // ==========================================
@@ -777,7 +788,7 @@ async function archiveTicket(
 
           .setDescription(
             'Seu atendimento no **Brasil Mega Lite** foi finalizado.\n\n' +
-            '📄 O histórico completo da conversa está anexado abaixo.'
+            '📜 Clique no botão abaixo para visualizar o histórico no navegador.\n📄 Uma cópia HTML também está anexada.'
           )
 
           .addFields(
