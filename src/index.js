@@ -36,9 +36,10 @@ import * as punir from './commands/punir.js';
 import * as historico from './commands/historico.js';
 import * as revogarpunicao from './commands/revogarpunicao.js';
 import * as admin from './commands/admin.js';
+import { startTranscriptWebServer } from './services/transcriptWeb.js';
 
 validateConfig();
-
+startTranscriptWebServer();
 
 // ==========================================
 // COMANDOS DO BOT
