@@ -843,7 +843,7 @@ async function archiveTicket(
         );
 
       const logoTicket = new AttachmentBuilder(
-  await readFile(new URL('../ativos/encerrarticket.png', import.meta.url)),
+   await readFile(new URL('../assets/encerrarticket.png', import.meta.url)),
   { name: 'encerrarticket.png' }
 );
      await owner.send({
