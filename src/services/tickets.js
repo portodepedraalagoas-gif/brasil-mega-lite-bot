@@ -11,6 +11,7 @@ import {
   TextInputStyle
 } from 'discord.js';
 
+import { readFile } from 'node:fs/promises';
 import { config } from '../config.js';
 import { getNextPunishmentId } from '../commands/punir.js';
 import { saveTranscript } from './transcriptWeb.js';
@@ -781,7 +782,7 @@ async function archiveTicket(
         new EmbedBuilder()
 
           .setColor(0x8e44ad)
-
+          .setImage('attachment://encerrarticket.png')
           .setTitle(
             '🔒 SEU TICKET FOI ENCERRADO'
           )
@@ -841,9 +842,13 @@ async function archiveTicket(
           }
         );
 
+      const logoTicket = new AttachmentBuilder(
+  await readFile(new URL('../ativos/encerrarticket.png', import.meta.url)),
+  { name: 'encerrarticket.png' }
+);
      await owner.send({
   embeds: [dmEmbed],
-  files: [dmTranscript],
+  files: [dmTranscript, logoTicket],
   components: [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
