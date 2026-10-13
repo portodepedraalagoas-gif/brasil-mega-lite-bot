@@ -18,6 +18,8 @@ import { saveTranscript } from './transcriptWeb.js';
 
 const TICKET_LOG_CHANNEL_ID = '1555924703695339581';
 const PUNISHMENT_LOG_CHANNEL_ID = '1555949299597049936';
+const TICKET_RATING_CHANNEL_ID = '1559401296199680120';
+const ratingInProgress = new Set();
 
 const TYPE = {
   suporte: {
@@ -856,6 +858,14 @@ async function archiveTicket(
         .setEmoji('📜')
         .setStyle(ButtonStyle.Link)
         .setURL(transcriptUrl)
+    ),
+    new ActionRowBuilder().addComponents(
+      ...[1, 2, 3, 4, 5].map(score =>
+        new ButtonBuilder()
+          .setCustomId(`ticket_rate:${interaction.channel.id}:${interaction.user.id}:${score}`)
+          .setLabel(`${score} ⭐`)
+          .setStyle(score === 5 ? ButtonStyle.Success : ButtonStyle.Secondary)
+      )
     )
   ]
 });
@@ -876,6 +886,110 @@ async function archiveTicket(
       '⚠️ Ticket sem ownerId. Transcript não enviado por PV.'
     );
   }
+}
+
+// ======================================================
+// AVALIAÇÃO DE ATENDIMENTO (DM -> CANAL DE AVALIAÇÕES)
+// ======================================================
+
+// O ID do ticket é guardado no rodapé da mensagem de avaliação.
+// Isso permite impedir avaliações duplicadas mesmo após reiniciar o bot.
+async function ticketAlreadyRated(channel, ticketId) {
+  let before;
+  const marker = `BML_RATING_TICKET:${ticketId}`;
+  while (true) {
+    const batch = await channel.messages.fetch({
+      limit: 100,
+      ...(before ? { before } : {})
+    });
+    if (!batch.size) return false;
+    if (batch.some(message =>
+      message.author.id === channel.client.user.id &&
+      message.embeds.some(embed => embed.footer?.text === marker)
+    )) return true;
+    before = batch.last().id;
+    if (batch.size < 100) return false;
+  }
+}
+
+async function handleTicketRating(interaction) {
+  const parts = interaction.customId.split(':');
+  if (parts.length !== 4) return true;
+  const [, ticketId, staffId, rawScore] = parts;
+  const score = Number(rawScore);
+  if (!/^\d{17,20}$/.test(ticketId) ||
+      !/^\d{17,20}$/.test(staffId) ||
+      !Number.isInteger(score) || score < 1 || score > 5) {
+    await interaction.reply({ content: '❌ Avaliação inválida.', ephemeral: true });
+    return true;
+  }
+
+  // Os botões são enviados apenas na DM do dono do ticket.
+  if (interaction.guildId) {
+    await interaction.reply({ content: '❌ Avalie pelo privado do bot.', ephemeral: true });
+    return true;
+  }
+
+  if (interaction.isButton()) {
+    const modal = new ModalBuilder()
+      .setCustomId(`ticket_rating_submit:${ticketId}:${staffId}:${score}`)
+      .setTitle(`Avaliação do atendimento: ${score}/5`)
+      .addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('comentario')
+          .setLabel('Comentário (opcional)')
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(false)
+          .setMaxLength(1000)
+          .setPlaceholder('Conte como foi seu atendimento...')
+      ));
+    await interaction.showModal(modal);
+    return true;
+  }
+
+  if (!interaction.isModalSubmit()) return true;
+  await interaction.deferReply();
+  const key = ticketId;
+  if (ratingInProgress.has(key)) {
+    await interaction.editReply('⏳ Esta avaliação já está sendo processada.');
+    return true;
+  }
+  ratingInProgress.add(key);
+  try {
+    const channel = await interaction.client.channels.fetch(TICKET_RATING_CHANNEL_ID);
+    if (!channel?.isTextBased() || !channel.messages?.fetch) {
+      throw new Error('Canal de avaliações indisponível ou sem acesso às mensagens.');
+    }
+    if (await ticketAlreadyRated(channel, ticketId)) {
+      await interaction.editReply('ℹ️ Este ticket já recebeu uma avaliação. Obrigado!');
+      return true;
+    }
+    const comment = interaction.fields.getTextInputValue('comentario').trim();
+    const embed = new EmbedBuilder()
+      .setColor(0x8e44ad)
+      .setTitle('⭐ NOVA AVALIAÇÃO DE ATENDIMENTO')
+      .addFields(
+        { name: '⭐ Nota', value: `${'⭐'.repeat(score)} (${score}/5)`, inline: true },
+        { name: '👤 Avaliado por', value: `<@${interaction.user.id}>`, inline: true },
+        { name: '🛡️ Ticket encerrado por', value: `<@${staffId}>`, inline: true },
+        { name: '🎫 ID do ticket', value: ticketId, inline: false },
+        { name: '📝 Comentário', value: comment || 'Sem comentário.', inline: false }
+      )
+      .setFooter({ text: `BML_RATING_TICKET:${ticketId}` })
+      .setTimestamp();
+    await channel.send({ embeds: [embed], allowedMentions: { parse: [] } });
+    await interaction.editReply(`💜 Obrigado! Sua avaliação de **${score}/5 estrelas** foi registrada.`);
+    // Desabilita as estrelas na mensagem original após a avaliação.
+    if (interaction.message?.editable) {
+      await interaction.message.edit({ components: [] }).catch(() => {});
+    }
+  } catch (error) {
+    console.error('❌ Erro ao registrar avaliação do ticket:', error);
+    await interaction.editReply('❌ Não consegui registrar sua avaliação agora. Tente novamente.');
+  } finally {
+    ratingInProgress.delete(key);
+  }
+  return true;
 }
 
 // ======================================================
@@ -1710,6 +1824,11 @@ if (accepted) {
 export async function handleTicketInteraction(
   interaction
 ) {
+  // Avaliações precisam ser encaminhadas para esta função também nas DMs.
+  if ((interaction.isButton() && interaction.customId.startsWith('ticket_rate:')) ||
+      (interaction.isModalSubmit() && interaction.customId.startsWith('ticket_rating_submit:'))) {
+    return handleTicketRating(interaction);
+  }
 // ==========================================
 // NOTIFICAR DONO DO TICKET NO PV
 // ==========================================
