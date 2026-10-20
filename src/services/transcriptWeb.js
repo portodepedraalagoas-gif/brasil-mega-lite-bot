@@ -119,6 +119,28 @@ export async function startTranscriptWebServer() {
       return;
     }
 
+    // MTA busca as punicoes pendentes.
+    if (pathname === '/mta/punishments/poll') {
+      if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        sendJson(res, 405, { error: 'Metodo nao permitido' });
+        return;
+      }
+
+      if (!authorized(req)) {
+        sendJson(res, 401, { error: 'Nao autorizado' });
+        return;
+      }
+
+      cleanupMtaPunishments();
+
+      const jobs = claimMtaPunishments(5);
+
+      sendJson(res, 200, { jobs });
+      return;
+    }
+
+    
     if (pathname === '/status') {
       await handleMtaStatus(req, res);
       return;
