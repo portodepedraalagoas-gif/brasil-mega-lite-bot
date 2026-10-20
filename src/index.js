@@ -41,7 +41,7 @@ import { handleAutoModMessage, handleAutoModInteraction } from './services/autom
 import { startTranscriptWebServer } from './services/transcriptWeb.js';
 
 validateConfig();
-startTranscriptWebServer();
+await startTranscriptWebServer();
 
 // ==========================================
 // COMANDOS DO BOT
