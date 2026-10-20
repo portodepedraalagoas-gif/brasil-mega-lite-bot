@@ -31,6 +31,7 @@ import * as players from './commands/players.js';
 import * as ip from './commands/ip.js';
 import * as ajuda from './commands/ajuda.js';
 import * as verificacao from './commands/verificacao.js';
+import * as verificar from './commands/verificar.js';
 import * as painel from './commands/painel.js';
 import * as punir from './commands/punir.js';
 import * as historico from './commands/historico.js';
@@ -39,7 +40,6 @@ import * as admin from './commands/admin.js';
 import * as automod from './commands/automod.js';
 import { handleAutoModMessage, handleAutoModInteraction } from './services/automod.js';
 import { startTranscriptWebServer } from './services/transcriptWeb.js';
-
 validateConfig();
 await startTranscriptWebServer();
 
@@ -53,6 +53,7 @@ const commandModules = [
   ip,
   ajuda,
   verificacao,
+  verificar,
   painel,
   tickets,
   punir,
