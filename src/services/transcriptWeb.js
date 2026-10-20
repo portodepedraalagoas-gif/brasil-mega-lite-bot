@@ -96,6 +96,22 @@ export async function startTranscriptWebServer() {
   const server = http.createServer(async (req, res) => {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname;
 
+    
+if (pathname === '/auth-test') {
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'Método não permitido' });
+    return;
+  }
+
+  if (!authorized(req)) {
+    sendJson(res, 401, { error: 'Chave inválida' });
+    return;
+  }
+
+  sendJson(res, 200, { authenticated: true });
+  return;
+}
+
     if (pathname === '/status') {
       await handleMtaStatus(req, res);
       return;
