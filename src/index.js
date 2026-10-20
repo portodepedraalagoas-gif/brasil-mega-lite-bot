@@ -36,6 +36,7 @@ import * as ip from './commands/ip.js';
 import * as ajuda from './commands/ajuda.js';
 import * as verificacao from './commands/verificacao.js';
 import * as verificar from './commands/verificar.js';
+import * as desvincular from './commands/desvincular.js';
 import * as painel from './commands/painel.js';
 import * as punir from './commands/punir.js';
 import * as historico from './commands/historico.js';
@@ -59,6 +60,8 @@ const commandModules = [
   ajuda,
   verificacao,
   verificar,
+  desvincular,
+  painel,
   painel,
   tickets,
   punir,
