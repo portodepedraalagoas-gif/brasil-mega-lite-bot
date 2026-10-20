@@ -23,7 +23,7 @@ export const config = {
 // INTEGRAÇÃO MTA ↔ DISCORD
 // ==========================================
 
-mtaApiKey: process.env.MTA_API_KEY || '',
+mtaApiKey: process.env.MTA_API_SECRET || '',
 mtaApiPort: Number(process.env.PORT || 3000),
 mtaVerificationEnabled: process.env.MTA_VERIFICATION_ENABLED === 'true',
   
