@@ -23,6 +23,13 @@ export async function execute(interaction) {
     });
   }
 
+  if (!interaction.inGuild()) {
+    return interaction.reply({
+      content: '❌ Use este comando dentro do servidor Discord.',
+      flags: MessageFlags.Ephemeral
+    });
+  }
+
   const code = interaction.options.getString('codigo', true);
 
   if (!/^\d{6}$/.test(code)) {
@@ -41,20 +48,16 @@ export async function execute(interaction) {
       throw new Error('O cargo VERIFIED_ROLE_ID não está configurado.');
     }
 
-    const member = await interaction.guild.members.fetch(
-      interaction.user.id
-    );
+    const guild = interaction.guild;
 
-    const role = await interaction.guild.roles.fetch(
-      config.verifiedRoleId
-    );
+    const member = await guild.members.fetch(interaction.user.id);
+    const role = await guild.roles.fetch(config.verifiedRoleId);
 
     if (!role) {
       throw new Error('O cargo de verificado não foi encontrado.');
     }
 
-    // Confere se o bot pode entregar o cargo antes de consumir o código.
-    const botMember = await interaction.guild.members.fetchMe();
+    const botMember = await guild.members.fetchMe();
 
     if (role.position >= botMember.roles.highest.position) {
       throw new Error(
@@ -62,9 +65,22 @@ export async function execute(interaction) {
       );
     }
 
-    const result = await confirmMtaCode(code, interaction.user.id);
+    if (!botMember.permissions.has('ManageRoles')) {
+      throw new Error(
+        'O bot precisa da permissão Gerenciar Cargos.'
+      );
+    }
 
-    await member.roles.add(role);
+    const result = await confirmMtaCode(
+      code,
+      interaction.user.id,
+      async () => {
+        await member.roles.add(
+          role,
+          'Verificação de conta MTA Brasil Mega Lite'
+        );
+      }
+    );
 
     await interaction.editReply({
       content:
