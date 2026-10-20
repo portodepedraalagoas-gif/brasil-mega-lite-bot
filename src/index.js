@@ -9,7 +9,11 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  PermissionFlagsBits
+  PermissionFlagsBits,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  MessageFlags
 } from 'discord.js';
 
 import {
@@ -40,6 +44,7 @@ import * as admin from './commands/admin.js';
 import * as automod from './commands/automod.js';
 import { handleAutoModMessage, handleAutoModInteraction } from './services/automod.js';
 import { startTranscriptWebServer } from './services/transcriptWeb.js';
+import { confirmMtaCode } from './services/mtaVerification.js';
 validateConfig();
 await startTranscriptWebServer();
 
@@ -235,6 +240,9 @@ client.on(
   }
 );
 
+
+// Controle temporário de tentativas do formulário (por usuário).
+const verificationAttempts = new Map();
 
 // ==========================================
 // INTERAÇÕES
@@ -1903,89 +1911,99 @@ if (
 
 
     // ======================================
-    // VERIFICAÇÃO
+    // VERIFICAÇÃO MTA — BOTÃO E JANELA
     // ======================================
 
-    if (
-      interaction.isButton() &&
-      interaction.customId ===
-        'bml_verify'
-    ) {
-
-      if (
-        !config.verifiedRoleId
-      ) {
-
-        return interaction.reply({
-          content:
-            '❌ O cargo de verificação ainda não foi configurado.',
-          ephemeral: true
+    if (interaction.isButton() && interaction.customId === 'bml_verify') {
+      if (process.env.MTA_VERIFICATION_ENABLED !== 'true') {
+        await interaction.reply({
+          content: '⏳ A verificação pelo MTA está em configuração. Tente novamente mais tarde.',
+          flags: MessageFlags.Ephemeral
         });
-
+        return;
       }
 
+      const modal = new ModalBuilder()
+        .setCustomId('bml_verify_modal')
+        .setTitle('Verificação Brasil Mega Lite');
 
+      const field = new TextInputBuilder()
+        .setCustomId('bml_verify_code')
+        .setLabel('Código de 6 números do MTA')
+        .setPlaceholder('Ex.: 012345')
+        .setStyle(TextInputStyle.Short)
+        .setMinLength(6)
+        .setMaxLength(6)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(field));
+      await interaction.showModal(modal);
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'bml_verify_modal') {
+      if (process.env.MTA_VERIFICATION_ENABLED !== 'true') {
+        await interaction.reply({
+          content: '⏳ A verificação pelo MTA ainda está desativada.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+
+      const code = interaction.fields.getTextInputValue('bml_verify_code').trim();
+      if (!/^\d{6}$/.test(code)) {
+        await interaction.reply({
+          content: '❌ Digite exatamente 6 números.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+
+      // Limita tentativas do formulário para dificultar adivinhação de códigos.
+      const userId = interaction.user.id;
+      const current = Date.now();
+      const attempts = verificationAttempts.get(userId) || [];
+      const recent = attempts.filter(time => current - time < 10 * 60 * 1000);
+      if (recent.length >= 5) {
+        await interaction.reply({
+          content: '❌ Muitas tentativas. Aguarde 10 minutos para tentar novamente.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+      recent.push(current);
+      verificationAttempts.set(userId, recent);
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
-
-        const role =
-          await interaction.guild.roles.fetch(
-            config.verifiedRoleId
-          );
-
-
-        if (!role) {
-
-          return interaction.reply({
-            content:
-              '❌ Não encontrei o cargo configurado.',
-            ephemeral: true
-          });
-
+        if (!interaction.guild || !config.verifiedRoleId) {
+          throw new Error('Cargo de verificação não configurado.');
         }
 
+        const guild = interaction.guild;
+        const member = await guild.members.fetch(userId);
+        const role = await guild.roles.fetch(config.verifiedRoleId);
+        const botMember = await guild.members.fetchMe();
 
-        if (
-          interaction.member.roles.cache.has(
-            role.id
-          )
-        ) {
-
-          return interaction.reply({
-            content:
-              '✅ Você já está verificado.',
-            ephemeral: true
-          });
-
+        if (!role) throw new Error('Cargo de verificado não encontrado.');
+        if (role.position >= botMember.roles.highest.position ||
+            !botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
+          throw new Error('O bot precisa da permissão Gerenciar Cargos e de um cargo acima do Verificado.');
         }
 
+        const result = await confirmMtaCode(code, userId);
+        await member.roles.add(role);
 
-        await interaction.member.roles.add(
-          role
-        );
-
-
-        return interaction.reply({
-          content:
-            `✅ Verificação concluída! Cargo **${role.name}** liberado.`,
-          ephemeral: true
+        await interaction.editReply({
+          content: `✅ Conta MTA **${result.account}** vinculada! Cargo **${role.name}** entregue. 🦊`
         });
-
-
-      } catch (e) {
-
-        console.error(
-          'Verificação:',
-          e
-        );
-
-
-        return interaction.reply({
-          content:
-            '❌ Não consegui entregar o cargo. Coloque o cargo do bot acima do cargo de verificado.',
-          ephemeral: true
+      } catch (error) {
+        console.error('Verificação MTA por modal:', error);
+        await interaction.editReply({
+          content: `❌ ${error.message || 'Não foi possível concluir a verificação.'}`
         });
-
       }
+      return;
     }
 
 
