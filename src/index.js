@@ -62,7 +62,6 @@ const commandModules = [
   verificar,
   desvincular,
   painel,
-  painel,
   tickets,
   punir,
   historico,
