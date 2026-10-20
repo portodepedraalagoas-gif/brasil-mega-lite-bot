@@ -43,6 +43,8 @@ import * as historico from './commands/historico.js';
 import * as revogarpunicao from './commands/revogarpunicao.js';
 import * as admin from './commands/admin.js';
 import * as automod from './commands/automod.js';
+import * as banirmta from './commands/banirmta.js';
+import * as desbanirmta from './commands/desbanirmta.js';
 import { handleAutoModMessage, handleAutoModInteraction } from './services/automod.js';
 import { startTranscriptWebServer } from './services/transcriptWeb.js';
 import { confirmMtaCode } from './services/mtaVerification.js';
@@ -67,7 +69,9 @@ const commandModules = [
   historico,
   revogarpunicao,
   admin,
-  automod
+  automod,
+  banirmta,
+  desbanirmta
 ];
 
 
