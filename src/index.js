@@ -1991,8 +1991,11 @@ if (
           throw new Error('O bot precisa da permissão Gerenciar Cargos e de um cargo acima do Verificado.');
         }
 
-        const result = await confirmMtaCode(code, userId);
-        await member.roles.add(role);
+        
+      const result = await confirmMtaCode(code, userId, async () => {
+      await member.roles.add(role, 'Verificação de conta MTA Brasil Mega Lite');
+});
+
 
         await interaction.editReply({
           content: `✅ Conta MTA **${result.account}** vinculada! Cargo **${role.name}** entregue. 🦊`
