@@ -1,3 +1,4 @@
+
 import http from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
@@ -7,6 +8,13 @@ import {
   initMtaVerification,
   createMtaCode
 } from './mtaVerification.js';
+
+import {
+  claimMtaPunishments,
+  completeMtaPunishment,
+  getMtaPunishment,
+  cleanupMtaPunishments
+} from './mtaPunishmentQueue.js';
 
 // No Railway, monte um Volume em /data e defina TRANSCRIPT_DIR=/data/transcripts.
 const directory = process.env.TRANSCRIPT_DIR || './data/transcripts';
@@ -96,21 +104,20 @@ export async function startTranscriptWebServer() {
   const server = http.createServer(async (req, res) => {
     const pathname = new URL(req.url || '/', 'http://localhost').pathname;
 
-    
-if (pathname === '/auth-test') {
-  if (req.method !== 'POST') {
-    sendJson(res, 405, { error: 'Método não permitido' });
-    return;
-  }
+    if (pathname === '/auth-test') {
+      if (req.method !== 'POST') {
+        sendJson(res, 405, { error: 'Método não permitido' });
+        return;
+      }
 
-  if (!authorized(req)) {
-    sendJson(res, 401, { error: 'Chave inválida' });
-    return;
-  }
+      if (!authorized(req)) {
+        sendJson(res, 401, { error: 'Chave inválida' });
+        return;
+      }
 
-  sendJson(res, 200, { authenticated: true });
-  return;
-}
+      sendJson(res, 200, { authenticated: true });
+      return;
+    }
 
     if (pathname === '/status') {
       await handleMtaStatus(req, res);
@@ -121,15 +128,18 @@ if (pathname === '/auth-test') {
       res.writeHead(405, { Allow: 'GET, HEAD' }).end();
       return;
     }
+
     if (pathname === '/health') {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' }).end('OK');
       return;
     }
+
     const match = /^\/transcript\/([a-f0-9]{48})$/.exec(pathname);
     if (!match) {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Não encontrado');
       return;
     }
+
     try {
       const html = await readFile(path.join(directory, `${match[1]}.html`));
       res.writeHead(200, {
@@ -145,6 +155,7 @@ if (pathname === '/auth-test') {
       res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Transcript não encontrado');
     }
   });
+
   server.listen(port, '0.0.0.0', () => console.log(`🌐 Transcripts e API MTA na porta ${port}`));
   return server;
 }
