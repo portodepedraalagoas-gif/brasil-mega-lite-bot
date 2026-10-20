@@ -19,6 +19,14 @@ export const config = {
   reportAcceptedChannelId: process.env.REPORT_ACCEPTED_CHANNEL_ID || '1555909005862248498',
   reportDeniedChannelId: process.env.REPORT_DENIED_CHANNEL_ID || '1555909063219355678',
   automodLogChannelId: process.env.AUTOMOD_LOG_CHANNEL_ID || '',
+// ==========================================
+// INTEGRAÇÃO MTA ↔ DISCORD
+// ==========================================
+
+mtaApiKey: process.env.MTA_API_KEY || '',
+mtaApiPort: Number(process.env.PORT || 3000),
+mtaVerificationEnabled: process.env.MTA_VERIFICATION_ENABLED === 'true',
+  
 };
 
 export function validateConfig() {
