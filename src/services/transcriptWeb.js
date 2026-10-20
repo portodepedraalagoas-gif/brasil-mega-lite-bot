@@ -141,6 +141,81 @@ export async function startTranscriptWebServer() {
     }
 
     
+    // MTA informa o resultado de uma punicao.
+    if (pathname === '/mta/punishments/result') {
+      if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        sendJson(res, 405, { error: 'Metodo nao permitido' });
+        return;
+      }
+
+      if (!authorized(req)) {
+        sendJson(res, 401, { error: 'Nao autorizado' });
+        return;
+      }
+
+      try {
+        const chunks = [];
+        let size = 0;
+
+        for await (const chunk of req) {
+          size += chunk.length;
+
+          if (size > 4096) {
+            sendJson(res, 413, { error: 'Requisicao muito grande' });
+            return;
+          }
+
+          chunks.push(chunk);
+        }
+
+        const data = JSON.parse(
+          Buffer.concat(chunks).toString('utf8')
+        );
+
+        if (
+          typeof data?.id !== 'string' ||
+          !/^[a-f0-9-]{36}$/i.test(data.id)
+        ) {
+          sendJson(res, 400, { error: 'ID invalido' });
+          return;
+        }
+
+        const outcome = completeMtaPunishment(
+          data.id,
+          {
+            ok: data.ok,
+            message: data.message,
+            protocol: data.protocol ?? null
+          }
+        );
+
+        if (!outcome.accepted) {
+          sendJson(res, 409, {
+            error: 'Resultado nao aceito',
+            reason: outcome.reason
+          });
+          return;
+        }
+
+        sendJson(res, 200, {
+          received: true,
+          duplicate: outcome.duplicate === true
+        });
+      } catch (error) {
+        console.error('[BML] Erro ao receber resultado MTA:', error);
+
+        if (!res.headersSent) {
+          sendJson(res, 400, {
+            error: 'Requisicao invalida'
+          });
+        }
+      }
+
+      return;
+    }
+
+    
     if (pathname === '/status') {
       await handleMtaStatus(req, res);
       return;
