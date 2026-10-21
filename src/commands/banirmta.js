@@ -1,11 +1,18 @@
 
-import { SlashCommandBuilder, MessageFlags } from 'discord.js';
+import {
+  SlashCommandBuilder,
+  MessageFlags,
+  EmbedBuilder
+} from 'discord.js';
+
 import {
   createMtaPunishment,
   getMtaPunishment
 } from '../services/mtaPunishmentQueue.js';
 
 const FOUNDER_ROLE = '1554346778801995866';
+const LOG_CHANNEL_ID = '1562311998564208670';
+
 const MAX_MINUTES = 365 * 24 * 60;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -62,6 +69,124 @@ export const data = new SlashCommandBuilder()
       .setMaxValue(MAX_MINUTES)
   );
 
+function formatDuration(minutes) {
+  if (minutes === 0) return 'Permanente';
+
+  if (minutes % 1440 === 0) {
+    return `${minutes / 1440} dia(s)`;
+  }
+
+  if (minutes % 60 === 0) {
+    return `${minutes / 60} hora(s)`;
+  }
+
+  return `${minutes} minuto(s)`;
+}
+
+async function sendBanLog(interaction, details) {
+  try {
+    const channel = await interaction.client.channels.fetch(
+      LOG_CHANNEL_ID
+    );
+
+    if (!channel?.isTextBased() || typeof channel.send !== 'function') {
+      console.error('[BML Logs] Canal de logs indisponivel.');
+      return;
+    }
+
+    const {
+      targetType,
+      target,
+      minutes,
+      reason,
+      jobId,
+      result,
+      status
+    } = details;
+
+    const success = status === 'done' && result?.ok === true;
+    const failed = status === 'failed' || (
+      status === 'done' && result?.ok === false
+    );
+
+    const title = success
+      ? '🔨 BANIMENTO MTA APLICADO'
+      : failed
+        ? '❌ FALHA NO BANIMENTO MTA'
+        : '⏳ BANIMENTO MTA SEM CONFIRMAÇÃO';
+
+    const color = success
+      ? 0xe74c3c
+      : failed
+        ? 0x95a5a6
+        : 0xf1c40f;
+
+    const embed = new EmbedBuilder()
+      .setColor(color)
+      .setTitle(title)
+      .addFields(
+        {
+          name: '🎮 Jogador / Alvo',
+          value: `\`${target}\``,
+          inline: true
+        },
+        {
+          name: '🔎 Tipo de identificação',
+          value: targetType === 'id' ? 'ID online' : 'Conta MTA',
+          inline: true
+        },
+        {
+          name: '⏱️ Duração',
+          value: formatDuration(minutes),
+          inline: true
+        },
+        {
+          name: '📝 Motivo',
+          value: reason
+        },
+        {
+          name: '👑 Responsável',
+          value: `<@${interaction.user.id}>`,
+          inline: true
+        },
+        {
+          name: '📋 Protocolo',
+          value: result?.protocol
+            ? `#${result.protocol}`
+            : 'Não informado',
+          inline: true
+        },
+        {
+          name: '📡 Resultado do MTA',
+          value: result?.message ||
+            'Aguardando confirmação. Não repetir automaticamente.'
+        },
+        {
+          name: '🔐 ID da operação',
+          value: `\`${jobId}\``
+        }
+      )
+      .setFooter({
+        text: 'Brasil Mega Lite • Registro de punições MTA'
+      })
+      .setTimestamp();
+
+    await channel.send({
+      embeds: [embed],
+      allowedMentions: {
+        parse: []
+      }
+    });
+
+    console.log(
+      `[BML Logs] Registro de banimento enviado: ${jobId}`
+    );
+
+  } catch (error) {
+    console.error('[BML Logs] Erro ao enviar log de banimento:', error);
+  }
+}
+
 export async function execute(interaction) {
   if (!interaction.inGuild()) {
     return interaction.reply({
@@ -116,6 +241,7 @@ export async function execute(interaction) {
     }
 
     minutes = 0;
+
   } else if (duration === 'minutos' || duration === 'horas') {
     if (!Number.isInteger(quantity) || quantity < 1) {
       return interaction.reply({
@@ -134,6 +260,7 @@ export async function execute(interaction) {
         flags: MessageFlags.Ephemeral
       });
     }
+
   } else {
     return interaction.reply({
       content: '❌ Tipo de duração inválido.',
@@ -145,8 +272,10 @@ export async function execute(interaction) {
     flags: MessageFlags.Ephemeral
   });
 
+  let jobId = null;
+
   try {
-    const { id } = await createMtaPunishment({
+    const created = await createMtaPunishment({
       action: 'ban',
       payload: {
         targetType,
@@ -159,13 +288,25 @@ export async function execute(interaction) {
       }
     });
 
+    jobId = created.id;
+
     for (let i = 0; i < 24; i++) {
       await sleep(2000);
 
-      const job = getMtaPunishment(id);
+      const job = getMtaPunishment(jobId);
 
       if (job?.status === 'done' || job?.status === 'failed') {
         const result = job.result;
+
+        await sendBanLog(interaction, {
+          targetType,
+          target,
+          minutes,
+          reason,
+          jobId,
+          result,
+          status: job.status
+        });
 
         return interaction.editReply({
           content:
@@ -178,11 +319,22 @@ export async function execute(interaction) {
       }
     }
 
+    // Resultado desconhecido: nunca afirmar que a punição falhou.
+    await sendBanLog(interaction, {
+      targetType,
+      target,
+      minutes,
+      reason,
+      jobId,
+      result: null,
+      status: 'pending'
+    });
+
     return interaction.editReply({
       content:
         '⏳ MTA não confirmou a execução dentro do prazo. ' +
         '**Não repita o comando.** Consulte os registros. ' +
-        `ID: \`${id}\`.`
+        `ID: \`${jobId}\`.`
     });
 
   } catch (error) {
@@ -191,7 +343,8 @@ export async function execute(interaction) {
     return interaction.editReply({
       content:
         '❌ Não foi possível registrar ou confirmar o comando. ' +
-        'Verifique os logs antes de tentar novamente.'
+        'Verifique os logs antes de tentar novamente.' +
+        (jobId ? `\nID: \`${jobId}\`` : '')
     });
   }
 }
