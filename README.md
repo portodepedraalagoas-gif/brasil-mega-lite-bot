@@ -27,3 +27,5 @@
 Para uma verificação real, configure o cargo @everyone para ver somente regras/verificação e negue os demais canais; dê acesso aos demais canais para o cargo `Verificado`.
 
 Observação: Discord não aceita `mtasa://` como URL de botão comum. Por isso `/ip` exibe o endereço pronto para copiar e colar no Quick Connect do MTA.
+
+Atualização de implantação do bot BML.
