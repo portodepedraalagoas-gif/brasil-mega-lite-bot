@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { getMtaLink } from './mtaVerification.js';
-import { vipRoles, desiredPlan, validateSnapshot } from './vipRoleConfig.js';
+import { vipRoles, desiredPlans, validateSnapshot } from './vipRoleConfig.js';
 const dir=process.env.MTA_VERIFY_DIR || '/data/verification';
 const file=path.join(dir,'vip_roles.json');
 let records=new Map(),storage=Promise.resolve(),work=Promise.resolve(),client,guildId;
@@ -29,15 +29,15 @@ export async function applyVIPRoles(guild,userId,plan){
  let member;
  try{member=await guild.members.fetch(userId);}catch(e){if(e.code===10007)return;throw e;}
  const managed=[...new Set(Object.values(vipRoles))];
- const desired=plan?vipRoles[plan]:null;
+ const desired=new Set((Array.isArray(plan)?plan:(plan?[plan]:[])).map(p=>vipRoles[p]).filter(Boolean));
  const bot=await guild.members.fetchMe();
  if(!bot.permissions.has(268435456n))throw new Error('Bot sem Gerenciar cargos');
- const changes=managed.filter(id=>member.roles.cache.has(id) && id!==desired);
- for(const id of [...changes,...(desired?[desired]:[])]){
+ const changes=managed.filter(id=>member.roles.cache.has(id) && !desired.has(id));
+ for(const id of [...changes,...desired]){
   const role=await guild.roles.fetch(id);
   if(!role || role.managed || role.position>=bot.roles.highest.position)throw new Error('Cargo VIP inexistente ou acima do bot');
  }
- if(desired && !member.roles.cache.has(desired))await member.roles.add(desired,'VIP ativo no MTA BML');
+ for(const id of desired)if(!member.roles.cache.has(id))await member.roles.add(id,'VIP válido na conta MTA BML');
  for(const id of changes)await member.roles.remove(id,'VIP trocado, vencido ou conta desvinculada no MTA BML');
 }
 async function reconcile(account){
@@ -47,7 +47,7 @@ async function reconcile(account){
  const row=records.get(account);if(!row)return;
  const userId=link?.verified?String(link.discordId):null;
  if(row.lastDiscordId && row.lastDiscordId!==userId)await applyVIPRoles(guild,row.lastDiscordId,null);
- const plan=desiredPlan(row);
+ const plan=desiredPlans(row);
  if(userId)await applyVIPRoles(guild,userId,plan);
  await locked(async()=>{const current=records.get(account);if(current){current.lastDiscordId=userId;await save();}});
  const now=Date.now();const expiries=row.memberships.filter(m=>m.expires*1000>now).map(m=>m.expires*1000+1000);
