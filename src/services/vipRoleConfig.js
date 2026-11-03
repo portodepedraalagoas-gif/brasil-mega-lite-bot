@@ -1,68 +1,26 @@
-import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
-import path from 'node:path';
-import { getMtaLink } from './mtaVerification.js';
-import { vipRoles, desiredPlans, validateSnapshot } from './vipRoleConfig.js';
-const dir=process.env.MTA_VERIFY_DIR || '/data/verification';
-const file=path.join(dir,'vip_roles.json');
-let records=new Map(),storage=Promise.resolve(),work=Promise.resolve(),client,guildId;
-const due=new Map();
-function locked(fn){const result=storage.then(fn);storage=result.catch(()=>{});return result;}
-async function save(){await mkdir(dir,{recursive:true});const temp=file+'.tmp';await writeFile(temp,JSON.stringify({records:Object.fromEntries(records)}),{mode:0o600});await rename(temp,file);}
-export async function initMtaVIPRoles(){
- try{const saved=JSON.parse(await readFile(file,'utf8'));for(const [account,row]of Object.entries(saved.records || {})){validateSnapshot(row);records.set(account,row);}}
- catch(e){if(e.code!=='ENOENT')throw e;}
+export const vipRoles = {
+ streamer: process.env.VIP_ROLE_STREAMER || '1557242080428957706',
+ lite: process.env.VIP_ROLE_LITE || '1557241841680777286',
+ sigma: process.env.VIP_ROLE_SIGMA || '1557242266022576241',
+ supremo: process.env.VIP_ROLE_SUPREMO || '1557242437125013534',
+ mega: process.env.VIP_ROLE_MEGA || '1557242618348441620'
+};
+export const vipPriority = ['mega', 'supremo', 'sigma', 'lite', 'streamer'];
+export function desiredPlan(snapshot, now = Math.floor(Date.now()/1000)) {
+ const valid = snapshot.memberships.filter(m => m.expires > now);
+ return valid.find(m => m.plan === snapshot.active)?.plan ||
+  vipPriority.find(plan => valid.some(m => m.plan === plan)) || null;
 }
-export async function acceptVIPSnapshot(input){
- const snapshot=validateSnapshot(input);
- await locked(async()=>{
-  const old=records.get(snapshot.account);
-  if(old && old.version>snapshot.version)throw Object.assign(new Error('Snapshot anterior ao atual'),{statusCode:409});
-  if(old && old.version===snapshot.version && JSON.stringify(validateSnapshot(old))!==JSON.stringify(snapshot))throw Object.assign(new Error('Versão repetida com conteúdo diferente'),{statusCode:409});
-  records.set(snapshot.account,{...snapshot,lastDiscordId:old?.lastDiscordId || null});
-  try{await save();}catch(e){if(old)records.set(snapshot.account,old);else records.delete(snapshot.account);throw e;}
- });
- enqueue(snapshot.account);
- return {accepted:true};
-}
-// Singular add/remove usam PUT/DELETE idempotentes; nunca substitui a lista inteira de cargos.
-export async function applyVIPRoles(guild,userId,plan){
- let member;
- try{member=await guild.members.fetch(userId);}catch(e){if(e.code===10007)return;throw e;}
- const managed=[...new Set(Object.values(vipRoles))];
- const desired=new Set((Array.isArray(plan)?plan:(plan?[plan]:[])).map(p=>vipRoles[p]).filter(Boolean));
- const bot=await guild.members.fetchMe();
- if(!bot.permissions.has(268435456n))throw new Error('Bot sem Gerenciar cargos');
- const changes=managed.filter(id=>member.roles.cache.has(id) && !desired.has(id));
- for(const id of [...changes,...desired]){
-  const role=await guild.roles.fetch(id);
-  if(!role || role.managed || role.position>=bot.roles.highest.position)throw new Error('Cargo VIP inexistente ou acima do bot');
+export function validateSnapshot(data) {
+ if (!data || typeof data.account !== 'string' || !data.account.trim() || data.account.length > 64 || data.account !== data.account.trim() || !Number.isSafeInteger(data.version) || data.version < 1 || !Array.isArray(data.memberships) || data.memberships.length > 5 || typeof data.active !== 'string' || (data.active && !Object.hasOwn(vipRoles,data.active))) throw Object.assign(new Error('Snapshot VIP inválido'),{statusCode:400});
+ const seen = new Set();
+ for (const m of data.memberships) {
+  if (!m || !Object.hasOwn(vipRoles,m.plan) || seen.has(m.plan) || !Number.isSafeInteger(m.expires) || m.expires < 0) throw Object.assign(new Error('Plano ou validade inválidos'),{statusCode:400});
+  seen.add(m.plan);
  }
- for(const id of desired)if(!member.roles.cache.has(id))await member.roles.add(id,'VIP válido na conta MTA BML');
- for(const id of changes)await member.roles.remove(id,'VIP trocado, vencido ou conta desvinculada no MTA BML');
-}
-async function reconcile(account){
- if(!client?.isReady())return;
- const guild=client.guilds.cache.get(guildId);if(!guild)throw new Error('Servidor Discord indisponível');
- const link=await getMtaLink(account);
- const row=records.get(account);if(!row)return;
- const userId=link?.verified?String(link.discordId):null;
- if(row.lastDiscordId && row.lastDiscordId!==userId)await applyVIPRoles(guild,row.lastDiscordId,null);
- const plan=desiredPlans(row);
- if(userId)await applyVIPRoles(guild,userId,plan);
- await locked(async()=>{const current=records.get(account);if(current){current.lastDiscordId=userId;await save();}});
- const now=Date.now();const expiries=row.memberships.filter(m=>m.expires*1000>now).map(m=>m.expires*1000+1000);
- due.set(account,userId?Math.min(now+300000,...expiries):now+60000);
-}
-function enqueue(account){
- work=work.then(()=>reconcile(account)).catch(e=>{
-  due.set(account,Date.now()+60000);
-  console.error('[BML VIP] Cargo pendente:',account,e.message);
- });
-}
-export function startVIPRoleSync(discordClient,id){
- client=discordClient;guildId=id;
- const scan=()=>{for(const account of records.keys())if((due.get(account)||0)<=Date.now()){due.set(account,Date.now()+60000);enqueue(account);}};
- scan();const timer=setInterval(scan,15000);timer.unref();
+ return {account:data.account,version:data.version,active:data.active,memberships:data.memberships.map(m=>({plan:m.plan,expires:m.expires}))};
 }
 
-export function resyncVIPAccount(account){if(records.has(account))enqueue(account);}
+export function desiredPlans(snapshot, now = Math.floor(Date.now()/1000)) {
+ return vipPriority.filter(plan => snapshot.memberships.some(m => m.plan === plan && m.expires > now));
+}
