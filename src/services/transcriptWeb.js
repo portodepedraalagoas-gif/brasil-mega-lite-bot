@@ -1,3 +1,4 @@
+import { initMtaVIPRoles, acceptVIPSnapshot } from './mtaVIPRoles.js';
 
 import http from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -167,7 +168,7 @@ async function handleMtaStatus(req, res) {
       return;
     }
 
-    const result = await createMtaCode(account);
+    const result = await createMtaCode(account, data.playerID);
 
     sendJson(res, 200, result);
   } catch (error) {
@@ -295,6 +296,7 @@ async function handlePunishmentResult(req, res) {
 export async function startTranscriptWebServer() {
   // Inicializa a verificacao ja existente.
   await initMtaVerification();
+  await initMtaVIPRoles();
 
   // Recupera a fila persistente antes de abrir a API.
   await initMtaPunishmentQueue();
@@ -336,6 +338,13 @@ export async function startTranscriptWebServer() {
     // Confirmacao do resultado pelo MTA.
     if (pathname === '/mta/punishments/result') {
       await handlePunishmentResult(req, res);
+      return;
+    }
+
+    if (pathname === '/vip/sync') {
+      if (!requirePost(req, res) || !requireAuthentication(req, res)) return;
+      try { sendJson(res, 200, await acceptVIPSnapshot(await readJsonBody(req))); }
+      catch(error) { console.error('[BML VIP] Snapshot recusado:', error.message); sendJson(res, error.statusCode || 503, {error:'Não foi possível sincronizar o VIP'}); }
       return;
     }
 

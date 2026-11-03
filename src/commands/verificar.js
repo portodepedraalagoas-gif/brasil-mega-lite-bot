@@ -1,3 +1,5 @@
+import { resyncVIPAccount } from '../services/mtaVIPRoles.js';
+import { updateVerificationNickname } from '../services/verificationNickname.js';
 
 import { SlashCommandBuilder, MessageFlags } from 'discord.js';
 import { config } from '../config.js';
@@ -6,6 +8,7 @@ import { confirmMtaCode } from '../services/mtaVerification.js';
 export const data = new SlashCommandBuilder()
   .setName('verificar')
   .setDescription('Vincula sua conta do MTA ao Discord usando o código de 6 dígitos.')
+  .addStringOption(option => option.setName('nome').setDescription('Seu nome no Discord, sem o ID').setRequired(true).setMinLength(2).setMaxLength(24))
   .addStringOption(option =>
     option
       .setName('codigo')
@@ -31,6 +34,7 @@ export async function execute(interaction) {
   }
 
   const code = interaction.options.getString('codigo', true);
+  const displayName=interaction.options.getString('nome', true);
 
   if (!/^\d{6}$/.test(code)) {
     return interaction.reply({
@@ -71,23 +75,26 @@ export async function execute(interaction) {
       );
     }
 
+    let nicknameWarning='';
     const result = await confirmMtaCode(
       code,
       interaction.user.id,
-      async () => {
+      async ({nickname}) => {
         await member.roles.add(
           role,
           'Verificação de conta MTA Brasil Mega Lite'
         );
-      }
+        nicknameWarning=await updateVerificationNickname(member,nickname);
+      }, displayName
     );
 
+    resyncVIPAccount(result.account);
     await interaction.editReply({
       content:
         `✅ **Verificação concluída!**\n\n` +
         `🎮 Conta MTA: **${result.account}**\n` +
         `🛡️ Cargo recebido: **${role.name}**\n\n` +
-        `Bem-vindo ao ${config.serverName}! 🦊`
+        `Apelido: **${result.nickname}**\nBem-vindo ao ${config.serverName}! 🦊` + (nicknameWarning ? `\n⚠️ ${nicknameWarning}` : '')
     });
 
   } catch (error) {

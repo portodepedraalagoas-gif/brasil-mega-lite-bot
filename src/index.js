@@ -1,3 +1,5 @@
+import { updateVerificationNickname } from './services/verificationNickname.js';
+import { startVIPRoleSync, resyncVIPAccount } from './services/mtaVIPRoles.js';
 import {
   Client,
   Collection,
@@ -162,6 +164,7 @@ client.once(
       `✅ Bot conectado como ${client.user.tag}`
     );
 
+    startVIPRoleSync(client, config.guildId);
     await updatePresence();
 
     setInterval(
@@ -1942,7 +1945,8 @@ if (
         .setMaxLength(6)
         .setRequired(true);
 
-      modal.addComponents(new ActionRowBuilder().addComponents(field));
+      const nameField=new TextInputBuilder().setCustomId('bml_verify_name').setLabel('Como você quer ser chamado?').setPlaceholder('Ex.: Miguel').setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(24).setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(nameField),new ActionRowBuilder().addComponents(field));
       await interaction.showModal(modal);
       return;
     }
@@ -1957,6 +1961,7 @@ if (
       }
 
       const code = interaction.fields.getTextInputValue('bml_verify_code').trim();
+      const displayName=interaction.fields.getTextInputValue('bml_verify_name').trim();
       if (!/^\d{6}$/.test(code)) {
         await interaction.reply({
           content: '❌ Digite exatamente 6 números.',
@@ -1998,13 +2003,16 @@ if (
         }
 
         
-      const result = await confirmMtaCode(code, userId, async () => {
-      await member.roles.add(role, 'Verificação de conta MTA Brasil Mega Lite');
-});
+      let nicknameWarning='';
+      const result = await confirmMtaCode(code, userId, async ({nickname}) => {
+        await member.roles.add(role, 'Verificação de conta MTA Brasil Mega Lite');
+        nicknameWarning=await updateVerificationNickname(member,nickname);
+      }, displayName);
 
 
+        resyncVIPAccount(result.account);
         await interaction.editReply({
-          content: `✅ Conta MTA **${result.account}** vinculada! Cargo **${role.name}** entregue. 🦊`
+          content: `✅ Conta vinculada! Apelido: **${result.nickname}**. Cargo **${role.name}** entregue. 🦊` + (nicknameWarning ? `\n⚠️ ${nicknameWarning}` : '')
         });
       } catch (error) {
         console.error('Verificação MTA por modal:', error);
