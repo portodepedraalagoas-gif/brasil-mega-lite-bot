@@ -1,4 +1,5 @@
 import { verificationNickname } from './verificationNickname.js';
+import { resetVerificationOnce } from './resetVerification.js';
 
 import { randomInt } from 'node:crypto';
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
@@ -49,6 +50,7 @@ export async function initMtaVerification() {
     if (error.code !== 'ENOENT') throw error;
   }
 
+  database.links = await resetVerificationOnce(database.links, save, DATA_DIR);
   database.tokens = {};
   await save(database.links);
   initialized = true;
