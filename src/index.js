@@ -36,6 +36,8 @@ import * as status from './commands/status.js';
 import * as players from './commands/players.js';
 import * as ip from './commands/ip.js';
 import * as ajuda from './commands/ajuda.js';
+import * as sugestao from './commands/sugestao.js';
+import { handleSuggestionInteraction } from './services/suggestions.js';
 import * as verificacao from './commands/verificacao.js';
 import * as verificar from './commands/verificar.js';
 import * as desvincular from './commands/desvincular.js';
@@ -62,6 +64,7 @@ const commandModules = [
   players,
   ip,
   ajuda,
+  sugestao,
   verificacao,
   verificar,
   desvincular,
@@ -263,6 +266,7 @@ client.on(
 
 
     // Painel AutoMod (sem interferir nos tickets)
+    if (await handleSuggestionInteraction(interaction)) return;
     if (await handleAutoModInteraction(interaction, config)) return;
 
     // ======================================
