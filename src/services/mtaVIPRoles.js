@@ -12,6 +12,14 @@ export async function initMtaVIPRoles(){
  try{const saved=JSON.parse(await readFile(file,'utf8'));for(const [account,row]of Object.entries(saved.records || {})){validateSnapshot(row);records.set(account,row);}}
  catch(e){if(e.code!=='ENOENT')throw e;}
 }
+export function getCurrentVIPMemberships(account) {
+ const snapshot = records.get(account);
+ if (!snapshot) return null;
+ const now = Math.floor(Date.now() / 1000);
+ return snapshot.memberships.filter(membership => membership.expires > now)
+  .map(({ plan, expires }) => ({ plan, expires }));
+}
+
 export async function acceptVIPSnapshot(input){
  const snapshot=validateSnapshot(input);
  await locked(async()=>{

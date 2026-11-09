@@ -9,6 +9,12 @@ const buttons = { 'bml_suggestion:up': 'up', 'bml_suggestion:down': 'down' };
 const pending = new Map();
 const cooldowns = new Map();
 const cooldownMs = 60_000;
+export const reviewStatuses = {
+  analise: { label: 'Em análise', color: 0xf4c469 },
+  aprovada: { label: 'Aprovada', color: 0x57f287 },
+  recusada: { label: 'Recusada', color: 0xed4245 },
+  implementada: { label: 'Implementada', color: 0x6fc8ff }
+};
 
 function storeDir() {
   return process.env.SUGGESTIONS_DATA_DIR?.trim() ||
@@ -29,6 +35,15 @@ async function save(id, state) {
     await rename(temp, path);
   } finally {
     await rm(temp, { force: true }).catch(() => {});
+  }
+}
+
+async function readState(id) {
+  try {
+    return JSON.parse(await readFile(fileFor(id), 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
   }
 }
 
@@ -92,6 +107,7 @@ export async function publishSuggestion(interaction, input) {
       title: 'Nova sugestão',
       description: `Enviada por <@${interaction.user.id}> · <t:${timestamp}:f>\n\n${safeIdea}`,
       thumbnail: { url: interaction.user.displayAvatarURL({ size: 128 }) },
+      fields: [{ name: 'Status', value: 'Aguardando análise' }],
       footer: { text: 'Brasil Mega Lite • Vote abaixo e converse no tópico.' }
     }] });
     thread = await message.startThread({ name: `Sugestão · ${message.id}`, autoArchiveDuration: 1440 });
@@ -120,13 +136,8 @@ export async function handleSuggestionInteraction(interaction) {
   try {
     await interaction.deferReply(privateReply);
     const result = await serialized(message.id, async () => {
-      let state;
-      try {
-        state = JSON.parse(await readFile(fileFor(message.id), 'utf8'));
-      } catch (error) {
-        if (error.code === 'ENOENT') return 'Esta sugestão não tem votação disponível.';
-        throw error;
-      }
+      const state = await readState(message.id);
+      if (!state) return 'Esta sugestão não tem votação disponível.';
       if (state.guildId !== guildId || state.channelId !== channelId) return 'Esta votação não está disponível neste canal.';
       const choice = buttons[interaction.customId];
       const removed = state.votes[user.id] === choice;
@@ -149,4 +160,82 @@ export async function handleSuggestionInteraction(interaction) {
     }
   }
   return true;
+}
+
+export async function reviewSuggestion(interaction, staffRoleId, reference, status, reason) {
+  const roles = interaction.member?.roles;
+  const hasStaffRole = staffRoleId && (Array.isArray(roles)
+    ? roles.includes(staffRoleId) : roles?.cache.has(staffRoleId));
+  if (!interaction.inGuild() || (!hasStaffRole && !interaction.memberPermissions?.has('Administrator'))) {
+    return interaction.reply({ ...privateReply, content: 'Apenas a staff pode revisar sugestões.' });
+  }
+
+  const value = reference.trim();
+  const link = /^https:\/\/(?:www\.|canary\.|ptb\.)?discord\.com\/channels\/(\d{17,20})\/(\d{17,20})\/(\d{17,20})\/?$/.exec(value);
+  const messageId = link?.[3] ?? value;
+  reason = reason.trim();
+  if (!idPattern.test(messageId) || (link && link[1] !== interaction.guildId) ||
+      !Object.hasOwn(reviewStatuses, status) || reason.length < 5 || reason.length > 1000) {
+    return interaction.reply({ ...privateReply, content: 'Informe o link ou ID da mensagem, um status válido e uma justificativa de 5 a 1.000 caracteres.' });
+  }
+
+  await interaction.deferReply(privateReply);
+  let result;
+  try {
+    result = await serialized(messageId, async () => {
+      const state = await readState(messageId);
+      if (!state || state.guildId !== interaction.guildId || (link && link[2] !== state.channelId)) {
+        return 'Não encontrei essa sugestão neste servidor. Use o link da mensagem original.';
+      }
+      const existing = state.review;
+      const sameReview = existing?.status === status && existing.reason === reason;
+      if (sameReview && existing.published) return 'Essa decisão já foi publicada no tópico.';
+      if (existing && !existing.published && !sameReview) {
+        return 'Há uma revisão pendente. Repita a decisão anterior com o mesmo status e justificativa para concluir a publicação.';
+      }
+
+      const [channel, thread] = await Promise.all([
+        interaction.guild.channels.fetch(state.channelId),
+        interaction.guild.channels.fetch(messageId)
+      ]);
+      if (!channel?.messages || !thread?.isThread() || thread.parentId !== state.channelId) {
+        return 'A mensagem ou o tópico da sugestão está indisponível.';
+      }
+      const message = await channel.messages.fetch(messageId);
+      if (message.author.id !== interaction.client.user.id || !message.embeds.length) {
+        return 'A mensagem selecionada não é uma publicação do bot.';
+      }
+      const bot = interaction.guild.members.me || await interaction.guild.members.fetchMe();
+      const permissions = thread.permissionsFor(bot);
+      if (!permissions?.has(['ViewChannel', 'SendMessagesInThreads'])) {
+        return 'O bot precisa de permissão para enviar mensagens no tópico da sugestão.';
+      }
+      if (thread.archived && thread.locked && !permissions.has('ManageThreads')) {
+        return 'O tópico está trancado. Reabra o tópico antes de registrar a decisão.';
+      }
+
+      const review = sameReview ? existing : { status, reason, moderatorId: interaction.user.id, nonce: interaction.id, published: false };
+      state.review = review;
+      await save(messageId, state);
+
+      const { label, color } = reviewStatuses[status];
+      const [original, ...otherEmbeds] = message.embeds.map(embed => embed.toJSON());
+      const fields = (original.fields || []).filter(field => field.name !== 'Status');
+      await message.edit({ embeds: [{ ...original, color, fields: [...fields, { name: 'Status', value: label }] }, ...otherEmbeds], allowedMentions: noPings });
+      if (thread.archived && thread.locked) await thread.setArchived(false);
+      await thread.send({
+        content: `**${label}** · decisão de <@${review.moderatorId}>\n\n${review.reason}`,
+        allowedMentions: noPings,
+        nonce: review.nonce,
+        enforceNonce: true
+      });
+      review.published = true;
+      await save(messageId, state);
+      return `Status atualizado para **${label}**. A justificativa foi publicada no [tópico](${thread.url}).`;
+    });
+  } catch (error) {
+    console.error('[Sugestões] Falha na revisão:', error.code || error.message);
+    result = 'Não consegui concluir a revisão. Confira se a mensagem e o tópico continuam acessíveis ao bot e repita o comando com os mesmos dados.';
+  }
+  await interaction.editReply({ content: result });
 }

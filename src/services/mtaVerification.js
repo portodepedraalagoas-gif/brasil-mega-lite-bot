@@ -72,6 +72,15 @@ export function getMtaLink(account) {
   return locked(() => database.links[account] || null);
 }
 
+export function getMtaLinkByDiscordId(discordId) {
+  return locked(() => {
+    const entry = Object.entries(database.links).find(([, link]) =>
+      link?.verified === true && String(link.discordId) === discordId
+    );
+    return entry ? { account: entry[0], playerID: Number(entry[1].playerID) } : null;
+  });
+}
+
 export function createMtaCode(account, playerID) {
   return locked(() => {
     if (

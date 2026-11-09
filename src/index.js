@@ -37,6 +37,8 @@ import * as players from './commands/players.js';
 import * as ip from './commands/ip.js';
 import * as ajuda from './commands/ajuda.js';
 import * as sugestao from './commands/sugestao.js';
+import * as revisarsugestao from './commands/revisarsugestao.js';
+import * as minhaconta from './commands/minhaconta.js';
 import { handleSuggestionInteraction } from './services/suggestions.js';
 import * as verificacao from './commands/verificacao.js';
 import * as verificar from './commands/verificar.js';
@@ -65,6 +67,8 @@ const commandModules = [
   ip,
   ajuda,
   sugestao,
+  revisarsugestao,
+  minhaconta,
   verificacao,
   verificar,
   desvincular,
