@@ -1,4 +1,4 @@
-import { initMtaVIPRoles, acceptVIPSnapshot, getMtaDiscordGuild } from './mtaVIPRoles.js';
+import * as vipRoles from './mtaVIPRoles.js';
 
 import http from 'node:http';
 import { config } from '../config.js';
@@ -6,11 +6,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import {
-  initMtaVerification,
-  createMtaCode,
-  syncMtaNickname
-} from './mtaVerification.js';
+import * as verification from './mtaVerification.js';
 
 import {
   initMtaPunishmentQueue,
@@ -170,9 +166,11 @@ async function handleMtaStatus(req, res) {
       return;
     }
 
-    const { nicknamePending, ...result } = await createMtaCode(account, data.playerID);
+    const { nicknamePending, ...result } = await verification.createMtaCode(account, data.playerID);
     sendJson(res, 200, result);
-    if (nicknamePending) void syncMtaNickname(account, getMtaDiscordGuild());
+    if (nicknamePending && typeof verification.syncMtaNickname === 'function') {
+      void verification.syncMtaNickname(account, vipRoles.getMtaDiscordGuild?.());
+    }
   } catch (error) {
     console.error(
       '[BML] Erro na API de verificacao MTA:',
@@ -297,8 +295,8 @@ async function handlePunishmentResult(req, res) {
 
 export async function startTranscriptWebServer() {
   // Inicializa a verificacao ja existente.
-  await initMtaVerification();
-  await initMtaVIPRoles();
+  await verification.initMtaVerification();
+  await vipRoles.initMtaVIPRoles();
 
   // Recupera a fila persistente antes de abrir a API.
   await initMtaPunishmentQueue();
@@ -385,7 +383,7 @@ p{color:#e1d5ec}
 
     if (pathname === '/vip/sync') {
       if (!requirePost(req, res) || !requireAuthentication(req, res)) return;
-      try { sendJson(res, 200, await acceptVIPSnapshot(await readJsonBody(req))); }
+      try { sendJson(res, 200, await vipRoles.acceptVIPSnapshot(await readJsonBody(req))); }
       catch(error) { console.error('[BML VIP] Snapshot recusado:', error.message); sendJson(res, error.statusCode || 503, {error:'Não foi possível sincronizar o VIP'}); }
       return;
     }

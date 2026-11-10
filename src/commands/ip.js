@@ -12,13 +12,20 @@ export async function execute(interaction) {
     .setTitle(`🌐 ${config.serverName}`)
     .setDescription(`Abra o **MTA:SA** → **Quick Connect / Conexão rápida** e cole:\n\n\`${ip}\`\n\nAtalho MTA: \`mtasa://${ip}\``)
     .setFooter({ text: 'Brasil Mega Lite • MTA:SA' });
-  const publicUrl = process.env.MTA_CONNECT_BASE_URL?.trim() ||
-    process.env.TRANSCRIPT_BASE_URL?.trim() ||
-    'https://brasil-mega-lite-bot-production.up.railway.app';
+  let connectUrl = 'https://brasil-mega-lite-bot-production.up.railway.app/conectar';
+  const publicUrl = process.env.MTA_CONNECT_BASE_URL?.trim() || process.env.TRANSCRIPT_BASE_URL?.trim();
+  if (publicUrl) {
+    try {
+      const url = new URL('/conectar', publicUrl);
+      if (url.protocol === 'https:' && !url.username && !url.password) connectUrl = url.href;
+    } catch {
+      // Uma variável inválida não deve impedir o comando de responder.
+    }
+  }
   const button = new ButtonBuilder()
     .setLabel('Conectar ao servidor')
     .setStyle(ButtonStyle.Link)
-    .setURL(new URL('/conectar', publicUrl).href);
+    .setURL(connectUrl);
   await interaction.reply({
     embeds: [embed],
     components: [new ActionRowBuilder().addComponents(button)]
