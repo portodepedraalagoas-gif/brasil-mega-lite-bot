@@ -1,13 +1,15 @@
-import { initMtaVIPRoles, acceptVIPSnapshot } from './mtaVIPRoles.js';
+import { initMtaVIPRoles, acceptVIPSnapshot, getMtaDiscordGuild } from './mtaVIPRoles.js';
 
 import http from 'node:http';
+import { config } from '../config.js';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import {
   initMtaVerification,
-  createMtaCode
+  createMtaCode,
+  syncMtaNickname
 } from './mtaVerification.js';
 
 import {
@@ -168,9 +170,9 @@ async function handleMtaStatus(req, res) {
       return;
     }
 
-    const result = await createMtaCode(account, data.playerID);
-
+    const { nicknamePending, ...result } = await createMtaCode(account, data.playerID);
     sendJson(res, 200, result);
+    if (nicknamePending) void syncMtaNickname(account, getMtaDiscordGuild());
   } catch (error) {
     console.error(
       '[BML] Erro na API de verificacao MTA:',
@@ -315,6 +317,46 @@ export async function startTranscriptWebServer() {
       sendJson(res, 400, {
         error: 'URL invalida'
       });
+      return;
+    }
+
+    if (pathname === '/conectar') {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        res.writeHead(405, { Allow: 'GET, HEAD' }).end();
+        return;
+      }
+      const host = String(config.mtaHost).trim();
+      const port = config.mtaPort;
+      if (!/^(?:[a-z0-9.-]+|\[[0-9a-f:]+\])$/i.test(host) ||
+          !Number.isInteger(port) || port < 1 || port > 65535) {
+        res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8' })
+          .end(req.method === 'HEAD' ? undefined : 'Endereço do servidor MTA indisponível.');
+        return;
+      }
+      const address = `${host}:${port}`;
+      const page = `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conectar ao Brasil Mega Lite</title>
+<style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#140d1b;color:#fff;font:16px system-ui}
+main{box-sizing:border-box;width:min(90vw,28rem);padding:2rem;background:#21152c;border-radius:1rem}
+h1{margin:0 0 1rem;font-size:1.75rem}
+a{display:inline-block;background:#ac5afa;color:#140d1b;padding:.8rem 1rem;border-radius:.5rem;font-weight:700;text-decoration:none}
+p{color:#e1d5ec}
+</style>
+</head>
+<body><main>
+<h1>Brasil Mega Lite</h1>
+<p>Se o navegador pedir, confirme para abrir o MTA:SA.</p>
+<a id="abrir" href="mtasa://${address}">Abrir MTA:SA</a>
+<p>Conexão rápida <code>${address}</code></p>
+</main><script>window.location.href = document.getElementById('abrir').href;</script></body>
+</html>`;
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+        .end(req.method === 'HEAD' ? undefined : page);
       return;
     }
 
