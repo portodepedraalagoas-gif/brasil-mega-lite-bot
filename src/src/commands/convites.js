@@ -1,0 +1,45 @@
+import { getInviteTotals } from '../services/invites.js';
+
+const number = new Intl.NumberFormat('pt-BR');
+const color = 0xb15cff;
+const medals = ['🥇', '🥈', '🥉'];
+
+function command(name, description, isRanking) {
+  return {
+    data: { name, toJSON: () => ({ name, description }) },
+    async execute(interaction) {
+      await interaction.deferReply(isRanking ? {} : { flags: 64 });
+      let totals;
+      try {
+        totals = await getInviteTotals(interaction.guildId);
+      } catch (error) {
+        console.error('[BML Convites] Consulta:', error.code || error.message);
+      }
+      if (!totals) {
+        await interaction.editReply('A contagem de convites está indisponível aqui no momento.');
+        return;
+      }
+      const ranking = [...totals].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      const rank = ranking.findIndex(([id]) => id === interaction.user.id);
+      const total = totals.get(interaction.user.id) || 0;
+      const embed = isRanking ? {
+        title: '🏆 Top 10 de convites',
+        description: ranking.slice(0, 10).map(([id, count], index) =>
+          `${medals[index] || `**${index + 1}.**`} <@${id}> · **${number.format(count)}** ${count === 1 ? 'convite' : 'convites'}`
+        ).join('\n') || 'O ranking aparece assim que o primeiro convite for identificado.',
+        footer: { text: 'BML • Convidados únicos desde a ativação' }
+      } : {
+        title: '🎟️ Seus convites no BML',
+        fields: [
+          { name: 'Pessoas convidadas', value: number.format(total), inline: true },
+          { name: 'Posição no ranking', value: rank < 0 ? 'Sem posição' : `${rank + 1}º lugar`, inline: true }
+        ],
+        footer: { text: 'Cada pessoa conta uma vez.' }
+      };
+      await interaction.editReply({ embeds: [{ ...embed, color }], allowedMentions: { parse: [] } });
+    }
+  };
+}
+
+export const invitesCommand = command('convites', 'Consulte seus convites e sua posição no ranking.', false);
+export const topInvitesCommand = command('topconvites', 'Veja quem mais convidou pessoas para o BML.', true);
