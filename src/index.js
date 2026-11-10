@@ -38,8 +38,6 @@ import * as players from './commands/players.js';
 import * as ip from './commands/ip.js';
 import * as ajuda from './commands/ajuda.js';
 import * as sugestao from './commands/sugestao.js';
-import * as revisarsugestao from './commands/revisarsugestao.js';
-import * as minhaconta from './commands/minhaconta.js';
 import { handleSuggestionInteraction } from './services/suggestions.js';
 import * as verificacao from './commands/verificacao.js';
 import * as verificar from './commands/verificar.js';
@@ -56,6 +54,7 @@ import { handleAutoModMessage, handleAutoModInteraction } from './services/autom
 import { startTranscriptWebServer } from './services/transcriptWeb.js';
 import { confirmMtaCode } from './services/mtaVerification.js';
 import { invitesCommand, topInvitesCommand, initializeInviteCommands } from './commands/convites.js';
+import { sendWelcomeCard, welcomeChannelId } from './services/welcome.js';
 validateConfig();
 await startTranscriptWebServer();
 
@@ -71,8 +70,6 @@ const commandModules = [
   ip,
   ajuda,
   sugestao,
-  revisarsugestao,
-  minhaconta,
   verificacao,
   verificar,
   desvincular,
@@ -199,9 +196,10 @@ client.once(
 client.on(
   'guildMemberAdd',
   async member => {
-
+    if (member.guild.id !== config.guildId || member.user.bot) return;
+    void sendWelcomeCard(member, config.verificationChannelId);
     if (
-      !config.verificationChannelId
+      !config.verificationChannelId || config.verificationChannelId === welcomeChannelId
     ) {
       return;
     }
