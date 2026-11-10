@@ -27,14 +27,14 @@ function command(name, description, isRanking) {
         description: ranking.slice(0, 10).map(([id, count], index) =>
           `${medals[index] || `**${index + 1}.**`} <@${id}> · **${number.format(count)}** ${count === 1 ? 'convite' : 'convites'}`
         ).join('\n') || 'O ranking aparece assim que o primeiro convite for identificado.',
-        footer: { text: 'BML • Convidados únicos desde a ativação' }
+        footer: { text: 'BML • Convidados que ainda estão no servidor' }
       } : {
         title: '🎟️ Seus convites no BML',
         fields: [
-          { name: 'Pessoas convidadas', value: number.format(total), inline: true },
+          { name: 'Convites ativos', value: number.format(total), inline: true },
           { name: 'Posição no ranking', value: rank < 0 ? 'Sem posição' : `${rank + 1}º lugar`, inline: true }
         ],
-        footer: { text: 'Cada pessoa conta uma vez.' }
+        footer: { text: 'Cada convidado que está no servidor conta uma vez.' }
       };
       await interaction.editReply({ embeds: [{ ...embed, color }], allowedMentions: { parse: [] } });
     }

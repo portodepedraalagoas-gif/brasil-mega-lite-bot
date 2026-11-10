@@ -13,7 +13,9 @@ export function inviteChannelId() {
 export function inviteTotals(records) {
   const totals = new Map();
   for (const record of records.values()) {
-    if (record.inviterId) totals.set(record.inviterId, (totals.get(record.inviterId) || 0) + 1);
+    if (record.active && record.inviterId) {
+      totals.set(record.inviterId, (totals.get(record.inviterId) || 0) + 1);
+    }
   }
   return totals;
 }
@@ -159,7 +161,7 @@ export function startInviteTracking(client, guildId) {
       const lines = [`👋 <@${member.id}>, boas-vindas ao **${guild.name}**!`];
       if (record.inviterId) {
         lines.push(`🎟️ ${returning ? 'Convite original de' : 'Convite de'} <@${record.inviterId}>.`);
-        lines.push(`🏆 Total de convites: **${number.format(totals.get(record.inviterId))}**`);
+        lines.push(`🏆 Convites ativos: **${number.format(totals.get(record.inviterId))}**`);
       } else {
         lines.push(record.kind === 'vanity' ? '🔗 Entrada pelo link oficial do servidor.' : '🎟️ Convite de origem não identificado.');
       }
@@ -213,10 +215,15 @@ export function startInviteTracking(client, guildId) {
         records.set(member.id, { ...record, active: false });
         await save(records);
       }
-      const inviter = record?.inviterId ? `\n🎟️ Convite original de <@${record.inviterId}>.` : '';
+      const lines = [`<@${member.id}> saiu do servidor.`];
+      if (record?.inviterId) {
+        const total = inviteTotals(state.records).get(record.inviterId) || 0;
+        lines.push(`🎟️ <@${record.inviterId}> perdeu um convite ativo.`);
+        lines.push(`🏆 Convites ativos: **${number.format(total)}**`);
+      }
       await announce(member.guild, {
         title: 'Membro saiu',
-        description: `<@${member.id}> saiu do servidor.${inviter}`,
+        description: lines.join('\n'),
         color: 0x81748d,
         footer: { text: 'BML • Convites' },
         timestamp: new Date().toISOString()
