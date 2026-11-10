@@ -2,6 +2,7 @@ import { updateVerificationNickname } from './services/verificationNickname.js';
 import { startVIPRoleSync, resyncVIPAccount } from './services/mtaVIPRoles.js';
 import {
   Client,
+  Events,
   Collection,
   GatewayIntentBits,
   REST,
@@ -54,6 +55,7 @@ import * as desbanirmta from './commands/desbanirmta.js';
 import { handleAutoModMessage, handleAutoModInteraction } from './services/automod.js';
 import { startTranscriptWebServer } from './services/transcriptWeb.js';
 import { confirmMtaCode } from './services/mtaVerification.js';
+import { invitesCommand, topInvitesCommand, initializeInviteCommands } from './commands/convites.js';
 validateConfig();
 await startTranscriptWebServer();
 
@@ -62,6 +64,8 @@ await startTranscriptWebServer();
 // ==========================================
 
 const commandModules = [
+  invitesCommand,
+  topInvitesCommand,
   status,
   players,
   ip,
@@ -92,6 +96,7 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildInvites,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent
   ]
@@ -164,13 +169,14 @@ async function updatePresence() {
 // ==========================================
 
 client.once(
-  'ready',
+  Events.ClientReady,
   async () => {
 
     console.log(
       `✅ Bot conectado como ${client.user.tag}`
     );
 
+    void initializeInviteCommands(client, config.guildId);
     startVIPRoleSync(client, config.guildId);
     await updatePresence();
 
@@ -2100,7 +2106,11 @@ if (
 // INICIAR BOT
 // ==========================================
 
-await registerCommands();
+try {
+  await registerCommands();
+} catch (error) {
+  console.error('[BML] Falha no registro geral de comandos:', error.code || error.message);
+}
 
 await client.login(
   config.token
