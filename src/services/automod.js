@@ -75,7 +75,8 @@ export async function handleAutoModMessage(message, config) {
 
   let reason = '';
   let targets = [message];
-  if (opts.links) {
+  const ticket = /^BML ticket \| owner=\d+ \| type=(suporte|financeiro|denuncia)(?:\s*\||$)/.test(message.channel?.topic || '');
+  if (opts.links && !ticket) {
     const links = findLinks(message.content);
     const unauthorized = links.find(link => {
       const host = domainOf(link);

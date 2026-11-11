@@ -1065,6 +1065,81 @@ new ButtonBuilder()
 }
 
 
+// Uma segunda linha mantém os cinco botões das denúncias dentro do limite do Discord.
+function ticketControls(type) {
+  return [ticketButtons(type), new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('ticket_transfer').setLabel('Transferir')
+      .setEmoji('↔️').setStyle(ButtonStyle.Secondary)
+  )];
+}
+
+const transferringTickets = new Set();
+async function transferInteraction(i) {
+  const choosing=i.customId==='ticket_transfer';
+  if (!choosing && !i.customId.startsWith('ticket_transfer_to:')) return false;
+  const topic=i.channel?.topic || '';
+  const current=topic.match(/(?:^|\|)\s*type=([a-z_]+)/)?.[1];
+  const owner=topic.match(/owner=(\d+)/)?.[1];
+  if (!topic.startsWith('BML ticket |') || !TYPE[current] || !owner || !canManage(i,current)) {
+    await i.reply({content:'Somente a equipe responsável pode transferir este ticket.',ephemeral:true});
+    return true;
+  }
+  if (choosing) {
+    const row=new ActionRowBuilder().addComponents(...Object.entries(TYPE)
+      .filter(([key])=>key!==current).map(([key,value])=>new ButtonBuilder()
+        .setCustomId(`ticket_transfer_to:${key}:${i.message.id}`)
+        .setLabel(value.label).setEmoji(value.emoji).setStyle(ButtonStyle.Secondary)));
+    await i.reply({content:'Para qual setor você quer transferir o atendimento?',components:[row],ephemeral:true});
+    return true;
+  }
+  const [,target,messageId]=i.customId.split(':');
+  if (!TYPE[target] || target===current || transferringTickets.has(i.channel.id)) {
+    await i.reply({content:'O setor já foi alterado ou existe uma transferência em andamento.',ephemeral:true});
+    return true;
+  }
+  transferringTickets.add(i.channel.id);
+  const previous=i.channel.permissionOverwrites.cache.map(o=>({id:o.id,type:o.type,allow:o.allow.bitfield,deny:o.deny.bitfield}));
+  const previousName=i.channel.name;
+  let permissionsChanged=false, moved=false;
+  try {
+    await i.deferUpdate();
+    const message=await i.channel.messages.fetch(messageId);
+    if (message.author.id!==i.client.user.id || !message.components.some(r=>r.components.some(b=>b.customId==='ticket_transfer'))) {
+      throw new Error('Mensagem de controle inválida');
+    }
+    const oldRoles=TYPE[current].roles().filter(Boolean);
+    const newRoles=[...new Set(TYPE[target].roles().filter(Boolean))];
+    const allowed=[PermissionFlagsBits.ViewChannel,PermissionFlagsBits.SendMessages,
+      PermissionFlagsBits.ReadMessageHistory,PermissionFlagsBits.AttachFiles,PermissionFlagsBits.EmbedLinks];
+    const protectedIds=new Set([i.guild.roles.everyone.id,owner,i.client.user.id]);
+    const replaceIds=new Set([...oldRoles,...newRoles,owner,i.client.user.id]);
+    const overwrites=previous.filter(o=>!replaceIds.has(o.id));
+    overwrites.push({id:owner,type:1,allow:allowed},{id:i.client.user.id,type:1,allow:allowed});
+    for (const id of newRoles) if (!protectedIds.has(id)) overwrites.push({id,type:0,allow:allowed});
+    await i.channel.permissionOverwrites.set(overwrites,'Transferência de setor do ticket');
+    permissionsChanged=true;
+    await i.channel.edit({topic:topic.replace(/type=[a-z_]+/,`type=${target}`),
+      name:`${target}-${previousName.replace(/^(suporte|financeiro|denuncia)-/,'')}`.slice(0,100)});
+    moved=true;
+    notifiedTickets.delete(i.channel.id);
+    const embeds=message.embeds.map((embed,index)=>index===0
+      ? EmbedBuilder.from(embed).setTitle(`${TYPE[target].emoji} ${TYPE[target].label}`).setColor(0xb058ff)
+      : EmbedBuilder.from(embed));
+    await message.edit({embeds,components:ticketControls(target)});
+    await i.channel.send({content:`Atendimento transferido de **${TYPE[current].label}** para **${TYPE[target].label}** por ${i.user}. `+newRoles.map(id=>`<@&${id}>`).join(' '),allowedMentions:{roles:newRoles,users:[]}});
+    await i.editReply({content:`Ticket transferido para ${TYPE[target].label}.`,components:[]});
+  } catch(error) {
+    console.error('[Tickets] Falha na transferência:',error);
+    if (permissionsChanged && !moved) {
+      await i.channel.permissionOverwrites.set(previous,'Restaurar acesso após falha na transferência').catch(console.error);
+    }
+    await i.editReply({content:moved?'O setor foi alterado, mas houve falha ao atualizar a mensagem. Avise a administração.':'Não consegui transferir. Confira as permissões do bot e tente novamente.',components:[]});
+  } finally {
+    transferringTickets.delete(i.channel.id);
+  }
+  return true;
+}
+
 // ======================================================
 // PAINEL
 // ======================================================
@@ -1325,6 +1400,8 @@ async function createTicket(
   type
 ) {
 
+  await interaction.deferReply({ ephemeral: true });
+
   const old =
     await existingTicket(
       interaction.guild,
@@ -1334,7 +1411,7 @@ async function createTicket(
 
   if (old) {
 
-    return interaction.reply({
+    return interaction.editReply({
       content:
         `❌ Você já possui um ticket de **${TYPE[type].label}** aberto: ${old}`,
       ephemeral: true
@@ -1371,6 +1448,13 @@ async function createTicket(
       permissionOverwrites: [
 
         {
+          id: interaction.client.user.id,
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages,
+            PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.AttachFiles,
+            PermissionFlagsBits.EmbedLinks]
+        },
+
+        {
           id:
             interaction.guild.roles.everyone.id,
 
@@ -1387,7 +1471,8 @@ async function createTicket(
             PermissionFlagsBits.ViewChannel,
             PermissionFlagsBits.SendMessages,
             PermissionFlagsBits.ReadMessageHistory,
-            PermissionFlagsBits.AttachFiles
+            PermissionFlagsBits.AttachFiles,
+            PermissionFlagsBits.EmbedLinks
           ]
         },
 
@@ -1398,7 +1483,8 @@ async function createTicket(
             PermissionFlagsBits.ViewChannel,
             PermissionFlagsBits.SendMessages,
             PermissionFlagsBits.ReadMessageHistory,
-            PermissionFlagsBits.AttachFiles
+            PermissionFlagsBits.AttachFiles,
+            PermissionFlagsBits.EmbedLinks
           ]
 
         }))
@@ -1408,6 +1494,8 @@ async function createTicket(
     });
 
 
+  try {
+  const fieldValue = id => interaction.fields.getTextInputValue(id).trim().slice(0, 1024) || 'Não informado';
   const embed =
     new EmbedBuilder()
 
@@ -1439,10 +1527,7 @@ async function createTicket(
           '👤 Denunciado',
 
         value:
-          interaction.fields
-            .getTextInputValue(
-              'denunciado'
-            )
+          fieldValue('denunciado')
       },
 
       {
@@ -1450,10 +1535,7 @@ async function createTicket(
           '🚨 Motivo',
 
         value:
-          interaction.fields
-            .getTextInputValue(
-              'motivo'
-            )
+          fieldValue('motivo')
       },
 
       {
@@ -1461,10 +1543,7 @@ async function createTicket(
           '📝 Descrição',
 
         value:
-          interaction.fields
-            .getTextInputValue(
-              'descricao'
-            )
+          fieldValue('descricao')
       },
 
       {
@@ -1472,10 +1551,7 @@ async function createTicket(
           '🔗 Provas',
 
         value:
-          interaction.fields
-            .getTextInputValue(
-              'provas'
-            )
+          fieldValue('provas')
       }
 
     );
@@ -1489,10 +1565,7 @@ async function createTicket(
           '📌 Assunto',
 
         value:
-          interaction.fields
-            .getTextInputValue(
-              'assunto'
-            )
+          fieldValue('assunto')
       },
 
       {
@@ -1500,10 +1573,7 @@ async function createTicket(
           '📝 Descrição',
 
         value:
-          interaction.fields
-            .getTextInputValue(
-              'descricao'
-            )
+          fieldValue('descricao')
       }
 
     );
@@ -1521,9 +1591,7 @@ async function createTicket(
 
     embeds: [embed],
 
-    components: [
-      ticketButtons(type)
-    ],
+    components: ticketControls(type),
 
     allowedMentions: {
       users: [
@@ -1535,7 +1603,7 @@ async function createTicket(
   });
 
 
-  await interaction.reply({
+  await interaction.editReply({
 
     content:
       `✅ Seu ticket foi criado: ${channel}`,
@@ -1543,6 +1611,18 @@ async function createTicket(
     ephemeral: true
 
   });
+
+  } catch (error) {
+    console.error('[Tickets] Falha ao publicar atendimento:', error);
+    try {
+      await channel.delete('Ticket sem mensagem inicial; criação cancelada');
+    } catch (cleanupError) {
+      console.error('[Tickets] Não foi possível remover ticket incompleto:', cleanupError);
+    }
+    await interaction.editReply({
+      content: 'Não consegui preparar o atendimento. Avise a equipe para conferir as permissões do bot e tente novamente.'
+    });
+  }
 
 }
 
@@ -1824,6 +1904,7 @@ if (accepted) {
 export async function handleTicketInteraction(
   interaction
 ) {
+  if (interaction.isButton() && await transferInteraction(interaction)) return true;
   // Avaliações precisam ser encaminhadas para esta função também nas DMs.
   if ((interaction.isButton() && interaction.customId.startsWith('ticket_rate:')) ||
       (interaction.isModalSubmit() && interaction.customId.startsWith('ticket_rating_submit:'))) {
