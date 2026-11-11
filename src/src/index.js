@@ -2,6 +2,7 @@ import { updateVerificationNickname } from './services/verificationNickname.js';
 import { startVIPRoleSync, resyncVIPAccount } from './services/mtaVIPRoles.js';
 import {
   Client,
+  Events,
   Collection,
   GatewayIntentBits,
   REST,
@@ -37,8 +38,6 @@ import * as players from './commands/players.js';
 import * as ip from './commands/ip.js';
 import * as ajuda from './commands/ajuda.js';
 import * as sugestao from './commands/sugestao.js';
-import * as revisarsugestao from './commands/revisarsugestao.js';
-import * as minhaconta from './commands/minhaconta.js';
 import { handleSuggestionInteraction } from './services/suggestions.js';
 import * as verificacao from './commands/verificacao.js';
 import * as verificar from './commands/verificar.js';
@@ -54,8 +53,8 @@ import * as desbanirmta from './commands/desbanirmta.js';
 import { handleAutoModMessage, handleAutoModInteraction } from './services/automod.js';
 import { startTranscriptWebServer } from './services/transcriptWeb.js';
 import { confirmMtaCode } from './services/mtaVerification.js';
-import { invitesCommand, topInvitesCommand } from './commands/convites.js';
-import { startInviteTracking } from './services/invites.js';
+import { invitesCommand, topInvitesCommand, initializeInviteCommands } from './commands/convites.js';
+import { sendWelcomeCard, welcomeChannelId } from './services/welcome.js';
 validateConfig();
 await startTranscriptWebServer();
 
@@ -71,8 +70,6 @@ const commandModules = [
   ip,
   ajuda,
   sugestao,
-  revisarsugestao,
-  minhaconta,
   verificacao,
   verificar,
   desvincular,
@@ -123,7 +120,7 @@ async function registerCommands() {
 
   const rest =
     new REST({
-      version: '10'
+      version: '10', timeout: 15000, retries: 1
     }).setToken(
       config.token
     );
@@ -169,15 +166,19 @@ async function updatePresence() {
 // ==========================================
 
 client.once(
-  'ready',
+  Events.ClientReady,
   async () => {
 
     console.log(
       `✅ Bot conectado como ${client.user.tag}`
     );
 
+    console.log('[BML Gateway] Pronto para receber botões e comandos.');
+    if (String(config.clientId)!==client.user.id) {
+      console.error('[BML Config] CLIENT_ID não corresponde ao bot conectado. Confira o Application ID e o token no Railway.');
+    }
+    void initializeInviteCommands(client, config.guildId);
     startVIPRoleSync(client, config.guildId);
-    startInviteTracking(client, config.guildId);
     await updatePresence();
 
     setInterval(
@@ -199,9 +200,10 @@ client.once(
 client.on(
   'guildMemberAdd',
   async member => {
-
+    if (member.guild.id !== config.guildId || member.user.bot) return;
+    void sendWelcomeCard(member, config.verificationChannelId);
     if (
-      !config.verificationChannelId
+      !config.verificationChannelId || config.verificationChannelId === welcomeChannelId
     ) {
       return;
     }
@@ -273,6 +275,113 @@ const verificationAttempts = new Map();
 client.on(
   'interactionCreate',
   async interaction => {
+    console.log('[BML Interação recebida]', interaction.commandName || interaction.customId || interaction.type);
+    try {
+    // ======================================
+    // VERIFICAÇÃO MTA — BOTÃO E JANELA
+    // ======================================
+
+    if (interaction.isButton() && interaction.customId === 'bml_verify') {
+      if (process.env.MTA_VERIFICATION_ENABLED !== 'true') {
+        await interaction.reply({
+          content: '⏳ A verificação pelo MTA está em configuração. Tente novamente mais tarde.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+
+      const modal = new ModalBuilder()
+        .setCustomId('bml_verify_modal')
+        .setTitle('Verificação Brasil Mega Lite');
+
+      const field = new TextInputBuilder()
+        .setCustomId('bml_verify_code')
+        .setLabel('Código de 6 números do MTA')
+        .setPlaceholder('Ex.: 012345')
+        .setStyle(TextInputStyle.Short)
+        .setMinLength(6)
+        .setMaxLength(6)
+        .setRequired(true);
+
+      const nameField=new TextInputBuilder().setCustomId('bml_verify_name').setLabel('Como você quer ser chamado?').setPlaceholder('Ex.: Miguel').setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(24).setRequired(true);
+      modal.addComponents(new ActionRowBuilder().addComponents(nameField),new ActionRowBuilder().addComponents(field));
+      await interaction.showModal(modal);
+      return;
+    }
+
+    if (interaction.isModalSubmit() && interaction.customId === 'bml_verify_modal') {
+      if (process.env.MTA_VERIFICATION_ENABLED !== 'true') {
+        await interaction.reply({
+          content: '⏳ A verificação pelo MTA ainda está desativada.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+
+      const code = interaction.fields.getTextInputValue('bml_verify_code').trim();
+      const displayName=interaction.fields.getTextInputValue('bml_verify_name').trim();
+      if (!/^\d{6}$/.test(code)) {
+        await interaction.reply({
+          content: '❌ Digite exatamente 6 números.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+
+      // Limita tentativas do formulário para dificultar adivinhação de códigos.
+      const userId = interaction.user.id;
+      const current = Date.now();
+      const attempts = verificationAttempts.get(userId) || [];
+      const recent = attempts.filter(time => current - time < 10 * 60 * 1000);
+      if (recent.length >= 5) {
+        await interaction.reply({
+          content: '❌ Muitas tentativas. Aguarde 10 minutos para tentar novamente.',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+      recent.push(current);
+      verificationAttempts.set(userId, recent);
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        if (!interaction.guild || !config.verifiedRoleId) {
+          throw new Error('Cargo de verificação não configurado.');
+        }
+
+        const guild = interaction.guild;
+        const member = await guild.members.fetch(userId);
+        const role = await guild.roles.fetch(config.verifiedRoleId);
+        const botMember = await guild.members.fetchMe();
+
+        if (!role) throw new Error('Cargo de verificado não encontrado.');
+        if (role.position >= botMember.roles.highest.position ||
+            !botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
+          throw new Error('O bot precisa da permissão Gerenciar Cargos e de um cargo acima do Verificado.');
+        }
+
+        
+      let nicknameWarning='';
+      const result = await confirmMtaCode(code, userId, async ({nickname}) => {
+        await member.roles.add(role, 'Verificação de conta MTA Brasil Mega Lite');
+        nicknameWarning=await updateVerificationNickname(member,nickname);
+      }, displayName);
+
+
+        resyncVIPAccount(result.account);
+        await interaction.editReply({
+          content: `✅ Conta vinculada! Apelido: **${result.nickname}**. Cargo **${role.name}** entregue. 🦊` + (nicknameWarning ? `\n⚠️ ${nicknameWarning}` : '')
+        });
+      } catch (error) {
+        console.error('Verificação MTA por modal:', error);
+        await interaction.editReply({
+          content: `❌ ${error.message || 'Não foi possível concluir a verificação.'}`
+        });
+      }
+      return;
+    }
+
+
 
 
     // Painel AutoMod (sem interferir nos tickets)
@@ -1934,111 +2043,6 @@ if (
 
 
     // ======================================
-    // VERIFICAÇÃO MTA — BOTÃO E JANELA
-    // ======================================
-
-    if (interaction.isButton() && interaction.customId === 'bml_verify') {
-      if (process.env.MTA_VERIFICATION_ENABLED !== 'true') {
-        await interaction.reply({
-          content: '⏳ A verificação pelo MTA está em configuração. Tente novamente mais tarde.',
-          flags: MessageFlags.Ephemeral
-        });
-        return;
-      }
-
-      const modal = new ModalBuilder()
-        .setCustomId('bml_verify_modal')
-        .setTitle('Verificação Brasil Mega Lite');
-
-      const field = new TextInputBuilder()
-        .setCustomId('bml_verify_code')
-        .setLabel('Código de 6 números do MTA')
-        .setPlaceholder('Ex.: 012345')
-        .setStyle(TextInputStyle.Short)
-        .setMinLength(6)
-        .setMaxLength(6)
-        .setRequired(true);
-
-      const nameField=new TextInputBuilder().setCustomId('bml_verify_name').setLabel('Como você quer ser chamado?').setPlaceholder('Ex.: Miguel').setStyle(TextInputStyle.Short).setMinLength(2).setMaxLength(24).setRequired(true);
-      modal.addComponents(new ActionRowBuilder().addComponents(nameField),new ActionRowBuilder().addComponents(field));
-      await interaction.showModal(modal);
-      return;
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId === 'bml_verify_modal') {
-      if (process.env.MTA_VERIFICATION_ENABLED !== 'true') {
-        await interaction.reply({
-          content: '⏳ A verificação pelo MTA ainda está desativada.',
-          flags: MessageFlags.Ephemeral
-        });
-        return;
-      }
-
-      const code = interaction.fields.getTextInputValue('bml_verify_code').trim();
-      const displayName=interaction.fields.getTextInputValue('bml_verify_name').trim();
-      if (!/^\d{6}$/.test(code)) {
-        await interaction.reply({
-          content: '❌ Digite exatamente 6 números.',
-          flags: MessageFlags.Ephemeral
-        });
-        return;
-      }
-
-      // Limita tentativas do formulário para dificultar adivinhação de códigos.
-      const userId = interaction.user.id;
-      const current = Date.now();
-      const attempts = verificationAttempts.get(userId) || [];
-      const recent = attempts.filter(time => current - time < 10 * 60 * 1000);
-      if (recent.length >= 5) {
-        await interaction.reply({
-          content: '❌ Muitas tentativas. Aguarde 10 minutos para tentar novamente.',
-          flags: MessageFlags.Ephemeral
-        });
-        return;
-      }
-      recent.push(current);
-      verificationAttempts.set(userId, recent);
-
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      try {
-        if (!interaction.guild || !config.verifiedRoleId) {
-          throw new Error('Cargo de verificação não configurado.');
-        }
-
-        const guild = interaction.guild;
-        const member = await guild.members.fetch(userId);
-        const role = await guild.roles.fetch(config.verifiedRoleId);
-        const botMember = await guild.members.fetchMe();
-
-        if (!role) throw new Error('Cargo de verificado não encontrado.');
-        if (role.position >= botMember.roles.highest.position ||
-            !botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
-          throw new Error('O bot precisa da permissão Gerenciar Cargos e de um cargo acima do Verificado.');
-        }
-
-        
-      let nicknameWarning='';
-      const result = await confirmMtaCode(code, userId, async ({nickname}) => {
-        await member.roles.add(role, 'Verificação de conta MTA Brasil Mega Lite');
-        nicknameWarning=await updateVerificationNickname(member,nickname);
-      }, displayName);
-
-
-        resyncVIPAccount(result.account);
-        await interaction.editReply({
-          content: `✅ Conta vinculada! Apelido: **${result.nickname}**. Cargo **${role.name}** entregue. 🦊` + (nicknameWarning ? `\n⚠️ ${nicknameWarning}` : '')
-        });
-      } catch (error) {
-        console.error('Verificação MTA por modal:', error);
-        await interaction.editReply({
-          content: `❌ ${error.message || 'Não foi possível concluir a verificação.'}`
-        });
-      }
-      return;
-    }
-
-
-    // ======================================
     // COMANDOS SLASH
     // ======================================
 
@@ -2098,6 +2102,12 @@ if (
 
       }
     }
+    } catch (error) {
+      console.error('[BML Interação]', interaction.commandName || interaction.customId || interaction.id, error);
+      if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+        await interaction.reply({content:'Não consegui responder agora. Tente novamente em instantes.',flags:MessageFlags.Ephemeral}).catch(() => {});
+      }
+    }
   }
 );
 
@@ -2106,8 +2116,14 @@ if (
 // INICIAR BOT
 // ==========================================
 
-await registerCommands();
+// O registro REST não deve atrasar a conexão do bot ao Gateway.
+client.on('error', error => console.error('[BML Discord]', error));
+client.on('shardError', error => console.error('[BML Gateway]', error));
+client.on('shardDisconnect', (event, shard) => console.warn('[BML Gateway] Desconectado', shard, event.code));
+client.on('shardReconnecting', shard => console.warn('[BML Gateway] Reconectando', shard));
+client.on('shardResume', shard => console.log('[BML Gateway] Conexão retomada', shard));
 
-await client.login(
-  config.token
-);
+await client.login(config.token);
+registerCommands().catch(error => {
+  console.error('[BML] Falha no registro geral de comandos:', error.code || error.message);
+});
