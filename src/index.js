@@ -2125,7 +2125,7 @@ client.on('shardDisconnect', (event, shard) => console.warn('[BML Gateway] Desco
 client.on('shardReconnecting', shard => console.warn('[BML Gateway] Reconectando', shard));
 client.on('shardResume', shard => console.log('[BML Gateway] Conexão retomada', shard));
 
-console.log('[BML Inicialização] Conectando ao Discord — BML-CONEXAO-04.');
+console.log('[BML Inicialização] Conectando ao Discord — BML-CONEXAO-05.');
 client.on('shardReady', shard => console.log('[BML Gateway] Sessão conectada', shard));
 client.on('invalidated', () => {
   console.error('[BML Gateway] Sessão invalidada; reinicialização necessária.');
@@ -2141,7 +2141,31 @@ const loginTimeout = setTimeout(() => {
   process.exit(1);
 }, 90000);
 loginTimeout.unref();
+async function discordConnectionCheck(endpoint) {
+  console.log('[BML Conexão] Consultando Discord', endpoint);
+  const response=await fetch('https://discord.com/api/v10'+endpoint, {
+    headers:{Authorization:'Bot '+config.token.trim()},
+    signal:AbortSignal.timeout(15000)
+  });
+  console.log('[BML Conexão] Resposta HTTP', response.status, endpoint);
+  if (!response.ok) {
+    if (response.status===401) throw new Error('DISCORD_TOKEN inválido ou revogado. Atualize o token do bot nas variáveis do Railway.');
+    if (response.status===429) {
+      const retry=response.headers.get('retry-after');
+      throw new Error('Discord limitou as solicitações (HTTP 429). Evite novos reinícios. Retry-After: '+(retry||'não informado'));
+    }
+    throw new Error('Discord respondeu HTTP '+response.status+' em '+endpoint);
+  }
+  return response.json();
+}
 try {
+  const identity=await discordConnectionCheck('/users/@me');
+  if (!identity.bot) throw new Error('O token configurado não pertence a um bot.');
+  console.log('[BML Conexão] Token validado. Bot:',identity.id);
+  const gateway=await discordConnectionCheck('/gateway/bot');
+  const remaining=gateway.session_start_limit?.remaining;
+  if (remaining===0) throw new Error('Limite de conexões do Discord esgotado. Aguarde '+Math.ceil((gateway.session_start_limit.reset_after||0)/60000)+' minutos sem reiniciar o bot.');
+  console.log('[BML Conexão] Gateway disponível. Iniciando sessão.');
   await client.login(config.token.trim());
   clearTimeout(loginTimeout);
   console.log('[BML Inicialização] Login concluído.');
@@ -2150,7 +2174,7 @@ try {
   });
 } catch (error) {
   clearTimeout(loginTimeout);
-  console.error('[BML Inicialização] Falha ao conectar ao Discord:', error.code || error.name, error.message);
+  console.error('[BML Inicialização] Falha ao conectar ao Discord:', error.code || error.name, error.message, error.cause?.code || '');
   client.destroy();
   process.exit(1);
 }
