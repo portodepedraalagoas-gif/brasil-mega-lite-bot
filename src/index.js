@@ -1,3 +1,4 @@
+import { discordConnectionCheck } from './services/discordConnection.js';
 import { updateVerificationNickname } from './services/verificationNickname.js';
 import { startVIPRoleSync, resyncVIPAccount } from './services/mtaVIPRoles.js';
 import {
@@ -2125,7 +2126,7 @@ client.on('shardDisconnect', (event, shard) => console.warn('[BML Gateway] Desco
 client.on('shardReconnecting', shard => console.warn('[BML Gateway] Reconectando', shard));
 client.on('shardResume', shard => console.log('[BML Gateway] Conexão retomada', shard));
 
-console.log('[BML Inicialização] Conectando ao Discord — BML-CONEXAO-05.');
+console.log('[BML Inicialização] Conectando ao Discord — BML-CONEXAO-06.');
 client.on('shardReady', shard => console.log('[BML Gateway] Sessão conectada', shard));
 client.on('invalidated', () => {
   console.error('[BML Gateway] Sessão invalidada; reinicialização necessária.');
@@ -2134,38 +2135,24 @@ client.on('invalidated', () => {
   setTimeout(() => process.exit(1), 1000);
 });
 // API ativa não significa que o bot concluiu a conexão ao Discord.
-const loginTimeout = setTimeout(() => {
+let loginTimeout;
+
+try {
+  const identity=await discordConnectionCheck('/users/@me', config.token);
+  if (!identity.bot) throw new Error('O token configurado não pertence a um bot.');
+  console.log('[BML Conexão] Token validado. Bot:',identity.id);
+  const gateway=await discordConnectionCheck('/gateway/bot', config.token);
+  const remaining=gateway.session_start_limit?.remaining;
+  if (remaining===0) throw new Error('Limite de conexões do Discord esgotado. Aguarde '+Math.ceil((gateway.session_start_limit.reset_after||0)/60000)+' minutos sem reiniciar o bot.');
+  console.log('[BML Conexão] Gateway disponível. Iniciando sessão.');
+  loginTimeout = setTimeout(() => {
   if (client.isReady()) return;
   console.error('[BML Inicialização] Discord não conectou em 90 segundos. Confira DISCORD_TOKEN, conexão com Discord e os logs do Gateway. Encerrando para permitir reinício pela hospedagem.');
   client.destroy();
   process.exit(1);
 }, 90000);
 loginTimeout.unref();
-async function discordConnectionCheck(endpoint) {
-  console.log('[BML Conexão] Consultando Discord', endpoint);
-  const response=await fetch('https://discord.com/api/v10'+endpoint, {
-    headers:{Authorization:'Bot '+config.token.trim()},
-    signal:AbortSignal.timeout(15000)
-  });
-  console.log('[BML Conexão] Resposta HTTP', response.status, endpoint);
-  if (!response.ok) {
-    if (response.status===401) throw new Error('DISCORD_TOKEN inválido ou revogado. Atualize o token do bot nas variáveis do Railway.');
-    if (response.status===429) {
-      const retry=response.headers.get('retry-after');
-      throw new Error('Discord limitou as solicitações (HTTP 429). Evite novos reinícios. Retry-After: '+(retry||'não informado'));
-    }
-    throw new Error('Discord respondeu HTTP '+response.status+' em '+endpoint);
-  }
-  return response.json();
-}
-try {
-  const identity=await discordConnectionCheck('/users/@me');
-  if (!identity.bot) throw new Error('O token configurado não pertence a um bot.');
-  console.log('[BML Conexão] Token validado. Bot:',identity.id);
-  const gateway=await discordConnectionCheck('/gateway/bot');
-  const remaining=gateway.session_start_limit?.remaining;
-  if (remaining===0) throw new Error('Limite de conexões do Discord esgotado. Aguarde '+Math.ceil((gateway.session_start_limit.reset_after||0)/60000)+' minutos sem reiniciar o bot.');
-  console.log('[BML Conexão] Gateway disponível. Iniciando sessão.');
+
   await client.login(config.token.trim());
   clearTimeout(loginTimeout);
   console.log('[BML Inicialização] Login concluído.');
