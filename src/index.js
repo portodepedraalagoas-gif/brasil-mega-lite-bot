@@ -90,6 +90,7 @@ const commandModules = [
 // ==========================================
 
 const client = new Client({
+  rest: { timeout: 15000, retries: 1 },
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
@@ -2124,7 +2125,32 @@ client.on('shardDisconnect', (event, shard) => console.warn('[BML Gateway] Desco
 client.on('shardReconnecting', shard => console.warn('[BML Gateway] Reconectando', shard));
 client.on('shardResume', shard => console.log('[BML Gateway] Conexão retomada', shard));
 
-await client.login(config.token);
-registerCommands().catch(error => {
-  console.error('[BML] Falha no registro geral de comandos:', error.code || error.message);
+console.log('[BML Inicialização] Conectando ao Discord — BML-CONEXAO-04.');
+client.on('shardReady', shard => console.log('[BML Gateway] Sessão conectada', shard));
+client.on('invalidated', () => {
+  console.error('[BML Gateway] Sessão invalidada; reinicialização necessária.');
+  client.destroy();
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 1000);
 });
+// API ativa não significa que o bot concluiu a conexão ao Discord.
+const loginTimeout = setTimeout(() => {
+  if (client.isReady()) return;
+  console.error('[BML Inicialização] Discord não conectou em 90 segundos. Confira DISCORD_TOKEN, conexão com Discord e os logs do Gateway. Encerrando para permitir reinício pela hospedagem.');
+  client.destroy();
+  process.exit(1);
+}, 90000);
+loginTimeout.unref();
+try {
+  await client.login(config.token.trim());
+  clearTimeout(loginTimeout);
+  console.log('[BML Inicialização] Login concluído.');
+  registerCommands().catch(error => {
+    console.error('[BML] Falha no registro geral de comandos:', error.code || error.message);
+  });
+} catch (error) {
+  clearTimeout(loginTimeout);
+  console.error('[BML Inicialização] Falha ao conectar ao Discord:', error.code || error.name, error.message);
+  client.destroy();
+  process.exit(1);
+}
