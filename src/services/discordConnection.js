@@ -31,6 +31,16 @@ export async function discordConnectionCheck(endpoint, token, options = {}) {
       headers: { Authorization: 'Bot ' + token.trim() }, signal: AbortSignal.timeout(15000)
     });
     log.log('[BML Conexão] Resposta HTTP', response.status, endpoint);
+
+if (response.status === 429) {
+  log.error('[BML Diagnóstico] Limite identificado:', {
+    global: response.headers.get('x-ratelimit-global'),
+    retryAfter: response.headers.get('retry-after'),
+    remaining: response.headers.get('x-ratelimit-remaining'),
+    limit: response.headers.get('x-ratelimit-limit'),
+    resetAfter: response.headers.get('x-ratelimit-reset-after')
+  });
+}
     if (response.status === 429) {
       let body;
       try { body = await response.json(); } catch {}
