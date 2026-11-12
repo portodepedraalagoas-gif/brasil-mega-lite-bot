@@ -1,3 +1,4 @@
+import { discordRESTOptions, traceInteraction } from './services/discordResponses.js';
 import { discordConnectionCheck } from './services/discordConnection.js';
 import { updateVerificationNickname } from './services/verificationNickname.js';
 import { startVIPRoleSync, resyncVIPAccount } from './services/mtaVIPRoles.js';
@@ -91,7 +92,7 @@ const commandModules = [
 // ==========================================
 
 const client = new Client({
-  rest: { timeout: 15000, retries: 1 },
+  rest: discordRESTOptions,
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
@@ -122,7 +123,7 @@ async function registerCommands() {
 
   const rest =
     new REST({
-      version: '10', timeout: 15000, retries: 1
+      version: '10', ...discordRESTOptions
     }).setToken(
       config.token
     );
@@ -176,7 +177,7 @@ client.once(
     );
 
     console.log('[BML Gateway] Pronto para receber botões e comandos.');
-    console.log('[BML] Atualização de interações BML-INTERACOES-03 carregada.');
+    console.log('[BML] Atualização de interações BML-INTERACOES-04 carregada.');
     if (String(config.clientId)!==client.user.id) {
       console.error('[BML Config] CLIENT_ID não corresponde ao bot conectado. Confira o Application ID e o token no Railway.');
     }
@@ -279,7 +280,19 @@ client.on(
   'interactionCreate',
   async interaction => {
     console.log('[BML Interação recebida]', interaction.commandName || interaction.customId || interaction.type);
+    const finishTrace=traceInteraction(interaction);
     try {
+    // Comandos nao precisam aguardar handlers de botoes, arquivos ou tickets.
+    if (interaction.isChatInputCommand()) {
+      const command=client.commands.get(interaction.commandName);
+      if (!command) {
+        await interaction.reply({content:'Este comando foi atualizado. Tente novamente depois do deploy.',flags:MessageFlags.Ephemeral});
+        return;
+      }
+      await command.execute(interaction);
+      return;
+    }
+
     // ======================================
     // VERIFICAÇÃO MTA — BOTÃO E JANELA
     // ======================================
@@ -2045,71 +2058,19 @@ if (
     }
 
 
-    // ======================================
-    // COMANDOS SLASH
-    // ======================================
-
-    if (
-      !interaction.isChatInputCommand()
-    ) {
-      return;
-    }
-
-
-    const command =
-      client.commands.get(
-        interaction.commandName
-      );
-
-
-    if (!command) {
-      return;
-    }
-
-
-    try {
-
-      await command.execute(
-        interaction
-      );
-
-
-    } catch (error) {
-
-      console.error(
-        error
-      );
-
-
-      const msg = {
-        content:
-          '❌ Ocorreu um erro ao executar esse comando.',
-        ephemeral: true
-      };
-
-
-      if (
-        interaction.replied ||
-        interaction.deferred
-      ) {
-
-        await interaction.followUp(
-          msg
-        );
-
-      } else {
-
-        await interaction.reply(
-          msg
-        );
-
-      }
+    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+      await interaction.reply({content:'Este botão não está disponível nesta versão. Abra um painel novo.',flags:MessageFlags.Ephemeral});
     }
     } catch (error) {
       console.error('[BML Interação]', interaction.commandName || interaction.customId || interaction.id, error);
-      if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-        await interaction.reply({content:'Não consegui responder agora. Tente novamente em instantes.',flags:MessageFlags.Ephemeral}).catch(() => {});
+      if (interaction.isRepliable()) {
+        const message={content:'Não consegui concluir agora. A falha foi registrada para a administração.'};
+        if (interaction.deferred) await interaction.editReply(message).catch(() => {});
+        else if (interaction.replied) await interaction.followUp({...message,flags:MessageFlags.Ephemeral}).catch(() => {});
+        else await interaction.reply({...message,flags:MessageFlags.Ephemeral}).catch(() => {});
       }
+    } finally {
+      finishTrace();
     }
   }
 );
