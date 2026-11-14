@@ -1,3 +1,6 @@
+import { discordPause } from './services/discordPause.js';
+import { discordRESTOptions, traceInteraction } from './services/discordResponses.js';
+import { discordConnectionCheck } from './services/discordConnection.js';
 import { updateVerificationNickname } from './services/verificationNickname.js';
 import { startVIPRoleSync, resyncVIPAccount } from './services/mtaVIPRoles.js';
 import {
@@ -90,6 +93,7 @@ const commandModules = [
 // ==========================================
 
 const client = new Client({
+  rest: discordRESTOptions,
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
@@ -120,7 +124,7 @@ async function registerCommands() {
 
   const rest =
     new REST({
-      version: '10', timeout: 15000, retries: 1
+      version: '10', ...discordRESTOptions
     }).setToken(
       config.token
     );
@@ -174,6 +178,7 @@ client.once(
     );
 
     console.log('[BML Gateway] Pronto para receber botões e comandos.');
+    console.log('[BML] Atualização de interações BML-INTERACOES-04 carregada.');
     if (String(config.clientId)!==client.user.id) {
       console.error('[BML Config] CLIENT_ID não corresponde ao bot conectado. Confira o Application ID e o token no Railway.');
     }
@@ -275,8 +280,26 @@ const verificationAttempts = new Map();
 client.on(
   'interactionCreate',
   async interaction => {
+    // Não tente responder a interações enquanto a API está bloqueada.
+    if (await discordPause.remaining() > 0) return;
+    if (Date.now() - interaction.createdTimestamp >= 2800) {
+      console.warn('[BML Interação] Descartada antes do envio: prazo inicial expirado.');
+      return;
+    }
     console.log('[BML Interação recebida]', interaction.commandName || interaction.customId || interaction.type);
+    const finishTrace=traceInteraction(interaction);
     try {
+    // Comandos nao precisam aguardar handlers de botoes, arquivos ou tickets.
+    if (interaction.isChatInputCommand()) {
+      const command=client.commands.get(interaction.commandName);
+      if (!command) {
+        await interaction.reply({content:'Este comando foi atualizado. Tente novamente depois do deploy.',flags:MessageFlags.Ephemeral});
+        return;
+      }
+      await command.execute(interaction);
+      return;
+    }
+
     // ======================================
     // VERIFICAÇÃO MTA — BOTÃO E JANELA
     // ======================================
@@ -2042,71 +2065,20 @@ if (
     }
 
 
-    // ======================================
-    // COMANDOS SLASH
-    // ======================================
-
-    if (
-      !interaction.isChatInputCommand()
-    ) {
-      return;
-    }
-
-
-    const command =
-      client.commands.get(
-        interaction.commandName
-      );
-
-
-    if (!command) {
-      return;
-    }
-
-
-    try {
-
-      await command.execute(
-        interaction
-      );
-
-
-    } catch (error) {
-
-      console.error(
-        error
-      );
-
-
-      const msg = {
-        content:
-          '❌ Ocorreu um erro ao executar esse comando.',
-        ephemeral: true
-      };
-
-
-      if (
-        interaction.replied ||
-        interaction.deferred
-      ) {
-
-        await interaction.followUp(
-          msg
-        );
-
-      } else {
-
-        await interaction.reply(
-          msg
-        );
-
-      }
+    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+      await interaction.reply({content:'Este botão não está disponível nesta versão. Abra um painel novo.',flags:MessageFlags.Ephemeral});
     }
     } catch (error) {
-      console.error('[BML Interação]', interaction.commandName || interaction.customId || interaction.id, error);
-      if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-        await interaction.reply({content:'Não consegui responder agora. Tente novamente em instantes.',flags:MessageFlags.Ephemeral}).catch(() => {});
+      console.error('[BML Interação]', interaction.commandName || interaction.customId || interaction.type, error.code || error.name);
+      if (error.code==='BML_DISCORD_PAUSED' || error.code===10062 || error.code===40060 || await discordPause.remaining()>0) return;
+      if (interaction.isRepliable()) {
+        const message={content:'Não consegui concluir agora. A falha foi registrada para a administração.'};
+        if (interaction.deferred) await interaction.editReply(message).catch(() => {});
+        else if (interaction.replied) await interaction.followUp({...message,flags:MessageFlags.Ephemeral}).catch(() => {});
+        else await interaction.reply({...message,flags:MessageFlags.Ephemeral}).catch(() => {});
       }
+    } finally {
+      finishTrace();
     }
   }
 );
@@ -2123,7 +2095,42 @@ client.on('shardDisconnect', (event, shard) => console.warn('[BML Gateway] Desco
 client.on('shardReconnecting', shard => console.warn('[BML Gateway] Reconectando', shard));
 client.on('shardResume', shard => console.log('[BML Gateway] Conexão retomada', shard));
 
-await client.login(config.token);
-registerCommands().catch(error => {
-  console.error('[BML] Falha no registro geral de comandos:', error.code || error.message);
+console.log('[BML Inicialização] Conectando ao Discord — BML-PROTECAO-06.');
+client.on('shardReady', shard => console.log('[BML Gateway] Sessão conectada', shard));
+client.on('invalidated', () => {
+  console.error('[BML Gateway] Sessão invalidada; reinicialização necessária.');
+  client.destroy();
+  process.exitCode = 1;
+  setTimeout(() => process.exit(1), 1000);
 });
+// API ativa não significa que o bot concluiu a conexão ao Discord.
+let loginTimeout;
+
+try {
+  const identity=await discordConnectionCheck('/users/@me', config.token);
+  if (!identity.bot) throw new Error('O token configurado não pertence a um bot.');
+  console.log('[BML Conexão] Token validado. Bot:',identity.id);
+  const gateway=await discordConnectionCheck('/gateway/bot', config.token);
+  const remaining=gateway.session_start_limit?.remaining;
+  if (remaining===0) throw new Error('Limite de conexões do Discord esgotado. Aguarde '+Math.ceil((gateway.session_start_limit.reset_after||0)/60000)+' minutos sem reiniciar o bot.');
+  console.log('[BML Conexão] Gateway disponível. Iniciando sessão.');
+  loginTimeout = setTimeout(() => {
+  if (client.isReady()) return;
+  console.error('[BML Inicialização] Discord não conectou em 90 segundos. Confira DISCORD_TOKEN, conexão com Discord e os logs do Gateway. Encerrando para permitir reinício pela hospedagem.');
+  client.destroy();
+  process.exit(1);
+}, 90000);
+loginTimeout.unref();
+
+  await client.login(config.token.trim());
+  clearTimeout(loginTimeout);
+  console.log('[BML Inicialização] Login concluído.');
+  registerCommands().catch(error => {
+    console.error('[BML] Falha no registro geral de comandos:', error.code || error.message);
+  });
+} catch (error) {
+  clearTimeout(loginTimeout);
+  console.error('[BML Inicialização] Falha ao conectar ao Discord:', error.code || error.name, error.message, error.cause?.code || '');
+  client.destroy();
+  process.exit(1);
+}

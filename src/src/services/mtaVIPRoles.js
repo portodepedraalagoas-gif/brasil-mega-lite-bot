@@ -1,3 +1,4 @@
+import {discordPause} from './discordPause.js';
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { getMtaLink } from './mtaVerification.js';
@@ -6,6 +7,8 @@ const dir=process.env.MTA_VERIFY_DIR || '/data/verification';
 const file=path.join(dir,'vip_roles.json');
 let records=new Map(),storage=Promise.resolve(),work=Promise.resolve(),client,guildId;
 const due=new Map();
+const queued=new Set(),failures=new Map();
+let syncStarted=false;
 function locked(fn){const result=storage.then(fn);storage=result.catch(()=>{});return result;}
 async function save(){await mkdir(dir,{recursive:true});const temp=file+'.tmp';await writeFile(temp,JSON.stringify({records:Object.fromEntries(records)}),{mode:0o600});await rename(temp,file);}
 export async function initMtaVIPRoles(){
@@ -22,14 +25,16 @@ export function getCurrentVIPMemberships(account) {
 
 export async function acceptVIPSnapshot(input){
  const snapshot=validateSnapshot(input);
+ let unchanged=false;
  await locked(async()=>{
   const old=records.get(snapshot.account);
   if(old && old.version>snapshot.version)throw Object.assign(new Error('Snapshot anterior ao atual'),{statusCode:409});
   if(old && old.version===snapshot.version && JSON.stringify(validateSnapshot(old))!==JSON.stringify(snapshot))throw Object.assign(new Error('Versão repetida com conteúdo diferente'),{statusCode:409});
+  if(old && old.version===snapshot.version){unchanged=true;return;}
   records.set(snapshot.account,{...snapshot,lastDiscordId:old?.lastDiscordId || null});
   try{await save();}catch(e){if(old)records.set(snapshot.account,old);else records.delete(snapshot.account);throw e;}
  });
- enqueue(snapshot.account);
+ if(!unchanged)enqueue(snapshot.account);
  return {accepted:true};
 }
 // Singular add/remove usam PUT/DELETE idempotentes; nunca substitui a lista inteira de cargos.
@@ -62,19 +67,36 @@ async function reconcile(account){
  due.set(account,userId?Math.min(now+300000,...expiries):now+60000);
 }
 function enqueue(account){
- work=work.then(()=>reconcile(account)).catch(e=>{
-  due.set(account,Date.now()+60000);
-  console.error('[BML VIP] Cargo pendente:',account,e.message);
- });
+ if(queued.has(account))return;
+ queued.add(account);
+ work=work.then(async()=>{
+  if(!client?.isReady())return;
+  const paused=await discordPause.remaining();
+  if(paused>0){due.set(account,Date.now()+paused);return;}
+  await reconcile(account);failures.delete(account);
+ }).catch(e=>{
+  const count=(failures.get(account)||0)+1;failures.set(account,count);
+  const permission=[50001,50013,10011,10004].includes(e.code);
+  const delay=permission?1800000:Math.min(1800000,60000*2**Math.min(count-1,5));
+  due.set(account,Date.now()+delay);
+  console.error('[BML VIP] Cargo pendente:',account,e.code||e.message,'nova tentativa em',Math.ceil(delay/60000),'min');
+ }).finally(()=>queued.delete(account));
 }
-export function getMtaDiscordGuild() {
- return client?.isReady() ? client.guilds.cache.get(guildId) : undefined;
-}
-
 export function startVIPRoleSync(discordClient,id){
+ if(syncStarted)return;syncStarted=true;
  client=discordClient;guildId=id;
- const scan=()=>{for(const account of records.keys())if((due.get(account)||0)<=Date.now()){due.set(account,Date.now()+60000);enqueue(account);}};
- scan();const timer=setInterval(scan,15000);timer.unref();
+ let scanning=false;
+ const scan=async()=>{
+  if(scanning || !client.isReady())return;scanning=true;
+  try{
+   if(await discordPause.remaining()>0)return;
+   for(const account of records.keys())if((due.get(account)||0)<=Date.now()){
+    due.set(account,Date.now()+60000);enqueue(account);
+   }
+  }catch(e){console.error('[BML VIP] Consulta adiada:',e.code||e.name);}
+  finally{scanning=false;}
+ };
+ void scan();const timer=setInterval(scan,15000);timer.unref();
 }
 
 export function resyncVIPAccount(account){if(records.has(account))enqueue(account);}
